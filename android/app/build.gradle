@@ -84,6 +84,10 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+        vectorDrawables.useSupportLibrary = true
+        
+        // Enable MultiDex to handle large number of methods
+        multiDexEnabled true
     }
     signingConfigs {
         debug {
@@ -96,6 +100,8 @@ android {
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+            // Disabling minification for debug to avoid issues
+            minifyEnabled false
         }
         release {
             // Caution! In production, you need to generate your own keystore file.
@@ -105,6 +111,16 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
+    
+    // Configure APK splits - commenting out for now as it may be causing the error
+    /*splits {
+        abi {
+            enable true
+            reset()
+            include "x86", "x86_64", "armeabi-v7a", "arm64-v8a"
+            universalApk false
+        }
+    }*/
 }
 
 dependencies {
@@ -116,4 +132,7 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+    
+    // Add MultiDex support
+    implementation("androidx.multidex:multidex:2.0.1")
 }

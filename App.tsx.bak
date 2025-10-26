@@ -1,0 +1,134 @@
+/**
+ * DeepShift React Native App
+ * Login Screen and Navigation
+ *
+ * @format
+ */
+
+import React from 'react';
+import { StatusBar } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Provider as PaperProvider, DefaultTheme } from 'react-native-paper';
+import AppNavigator from './src/navigation/AppNavigator';
+
+// React Native Paper theme
+const theme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: '#2563eb',
+    accent: '#1d4ed8',
+    background: '#f6f7fb',
+    surface: '#ffffff',
+    error: '#dc2626',
+  },
+};
+
+const App: React.FC = () => {
+  return (
+    <SafeAreaProvider>
+      <StatusBar barStyle="dark-content" />
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.inner}>
+            <Text style={styles.logo}>DeepShift</Text>
+
+            <View style={styles.card}>
+              <Text style={styles.title}>Welcome back</Text>
+              <Text style={styles.subtitle}>Sign in to continue</Text>
+
+              <Text style={styles.label}>Email</Text>
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="you@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                style={styles.input}
+                accessibilityLabel="Email input"
+              />
+
+              <Text style={styles.label}>Password</Text>
+              <TextInput
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Enter your password"
+                secureTextEntry
+                style={styles.input}
+                accessibilityLabel="Password input"
+              />
+
+              <TouchableOpacity
+                style={styles.forgotContainer}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.forgotText}>Forgot password?</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.button} activeOpacity={0.8}>
+                <Text style={styles.buttonText}>Log in</Text>
+              </TouchableOpacity>
+
+              <View style={styles.footerRow}>
+                <Text style={styles.footerText}>Don’t have an account?</Text>
+                <TouchableOpacity>
+                  <Text style={styles.signUpText}> Sign up</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </SafeAreaProvider>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#f6f7fb' },
+  inner: { flex: 1, padding: 24, justifyContent: 'center' },
+  logo: {
+    fontSize: 34,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 24,
+    color: '#1f2937',
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  title: { fontSize: 20, fontWeight: '600', color: '#111827' },
+  subtitle: { fontSize: 13, color: '#6b7280', marginBottom: 12 },
+  label: { fontSize: 12, color: '#374151', marginTop: 12, marginBottom: 6 },
+  input: {
+    height: 44,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    backgroundColor: '#ffffff',
+  },
+  forgotContainer: { alignItems: 'flex-end', marginTop: 8 },
+  forgotText: { color: '#2563eb', fontSize: 13 },
+  button: {
+    marginTop: 16,
+    backgroundColor: '#2563eb',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  buttonText: { color: '#fff', fontWeight: '600', fontSize: 16 },
+  footerRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 14 },
+  footerText: { color: '#6b7280' },
+  signUpText: { color: '#2563eb', fontWeight: '600' },
+});
+
+export default App;

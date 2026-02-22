@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -167,20 +167,6 @@ const SupervisorDashboard: React.FC = () => {
                 : undefined
             }
             badgeColor="#ef4444"
-          />
-          <FeatureCard
-            icon=""
-            title="Section Summary"
-            subtitle="All sections overview"
-            onPress={handleSectionSummary}
-          />
-          <FeatureCard
-            icon=""
-            title="Remarks Panel"
-            subtitle="Chat with foremen"
-            onPress={handleRemarksPanel}
-            badge="3"
-            badgeColor="#3b82f6"
           />
           <FeatureCard
             icon="📝"

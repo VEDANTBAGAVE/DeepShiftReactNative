@@ -174,6 +174,12 @@ export interface Worker {
   openTasksCount: number;
   recentIncidentsCount: number;
   lastActivityAt: number;
+  latestRemark?: {
+    text: string;
+    author: string;
+    timestamp: number;
+    type: string;
+  };
 }
 
 export interface SectionReport {

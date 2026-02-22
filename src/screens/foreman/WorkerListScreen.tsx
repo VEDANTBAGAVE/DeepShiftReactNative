@@ -170,6 +170,30 @@ const WorkerListScreen: React.FC = () => {
     });
   };
 
+  // Calculate today's stats
+  const todayStats = useMemo(() => {
+    const allWorkers = getWorkers();
+    const present = allWorkers.filter(
+      w => w.todayAttendance === 'present',
+    ).length;
+    const absent = allWorkers.filter(
+      w => w.todayAttendance === 'absent',
+    ).length;
+    const tardy = allWorkers.filter(w => w.todayAttendance === 'tardy').length;
+    const notMarked = allWorkers.filter(
+      w => !w.todayAttendance || w.todayAttendance === 'not-marked',
+    ).length;
+    return { total: allWorkers.length, present, absent, tardy, notMarked };
+  }, []);
+
+  // Handle long press to enter multi-select mode
+  const handleLongPress = (workerId: string) => {
+    if (!isMultiSelectMode) {
+      setIsMultiSelectMode(true);
+      setSelectedWorkers(new Set([workerId]));
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -197,6 +221,60 @@ const WorkerListScreen: React.FC = () => {
             {isMultiSelectMode ? 'Cancel' : '☑️'}
           </Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Today's Counter */}
+      <View style={styles.todayCounterContainer}>
+        <View style={styles.todayCounterHeader}>
+          <Text style={styles.todayCounterTitle}>📊 Today's Attendance</Text>
+          <Text style={styles.todayCounterDate}>
+            {new Date().toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            })}
+          </Text>
+        </View>
+        <View style={styles.todayStatsGrid}>
+          <View style={styles.todayStatCard}>
+            <Text style={styles.todayStatValue}>{todayStats.present}</Text>
+            <Text style={[styles.todayStatLabel, { color: '#10b981' }]}>
+              Present
+            </Text>
+          </View>
+          <View style={styles.todayStatCard}>
+            <Text style={styles.todayStatValue}>{todayStats.absent}</Text>
+            <Text style={[styles.todayStatLabel, { color: '#ef4444' }]}>
+              Absent
+            </Text>
+          </View>
+          <View style={styles.todayStatCard}>
+            <Text style={styles.todayStatValue}>{todayStats.tardy}</Text>
+            <Text style={[styles.todayStatLabel, { color: '#f59e0b' }]}>
+              Tardy
+            </Text>
+          </View>
+          <View style={styles.todayStatCard}>
+            <Text style={styles.todayStatValue}>{todayStats.notMarked}</Text>
+            <Text style={[styles.todayStatLabel, { color: '#94a3b8' }]}>
+              Not Marked
+            </Text>
+          </View>
+        </View>
+        <View style={styles.todayProgressBar}>
+          <View
+            style={[
+              styles.todayProgressFill,
+              {
+                width: `${(todayStats.present / todayStats.total) * 100}%`,
+              },
+            ]}
+          />
+        </View>
+        <Text style={styles.todayProgressText}>
+          {Math.round((todayStats.present / todayStats.total) * 100)}% Marked
+          Present
+        </Text>
       </View>
 
       {/* Search Bar */}
@@ -331,6 +409,7 @@ const WorkerListScreen: React.FC = () => {
                   handleViewProfile(worker.id);
                 }
               }}
+              onLongPress={() => handleLongPress(worker.id)}
             >
               {isMultiSelectMode && (
                 <View style={styles.checkboxContainer}>
@@ -383,15 +462,21 @@ const WorkerListScreen: React.FC = () => {
                       </Text>
                     </View>
                   )}
-                  {worker.attendanceMarkedAt && (
-                    <View style={styles.workerStat}>
-                      <Text style={styles.workerStatIcon}>🕐</Text>
-                      <Text style={styles.workerStatText}>
-                        {formatTime(worker.attendanceMarkedAt)}
+                </View>
+
+                {/* Audit Stamp - Show when attendance was marked */}
+                {worker.attendanceMarkedAt &&
+                  worker.todayAttendance &&
+                  worker.todayAttendance !== 'not-marked' && (
+                    <View style={styles.auditStamp}>
+                      <Text style={styles.auditStampIcon}>✓</Text>
+                      <Text style={styles.auditStampText}>
+                        Marked{' '}
+                        {getStatusLabel(worker.todayAttendance).toLowerCase()}{' '}
+                        at {formatTime(worker.attendanceMarkedAt)}
                       </Text>
                     </View>
                   )}
-                </View>
 
                 {worker.attendanceReason && (
                   <Text style={styles.workerReason}>
@@ -748,6 +833,92 @@ const styles = StyleSheet.create({
   },
   quickActionIcon: {
     fontSize: 16,
+  },
+  // Today's Counter Styles
+  todayCounterContainer: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  todayCounterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  todayCounterTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1e293b',
+  },
+  todayCounterDate: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  todayStatsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  todayStatCard: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  todayStatValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1e293b',
+    marginBottom: 4,
+  },
+  todayStatLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  todayProgressBar: {
+    height: 6,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  todayProgressFill: {
+    height: '100%',
+    backgroundColor: '#10b981',
+    borderRadius: 3,
+  },
+  todayProgressText: {
+    fontSize: 12,
+    color: '#64748b',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  // Audit Stamp Styles
+  auditStamp: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0fdf4',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    marginTop: 8,
+  },
+  auditStampIcon: {
+    fontSize: 12,
+    color: '#16a34a',
+    marginRight: 6,
+  },
+  auditStampText: {
+    fontSize: 11,
+    color: '#15803d',
+    fontWeight: '600',
+    flex: 1,
   },
 });
 

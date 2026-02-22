@@ -169,12 +169,26 @@ const WorkerProfileSheet: React.FC = () => {
               { backgroundColor: getStatusColor(worker.todayAttendance) },
             ]}
           >
-            <Text style={styles.statusBannerText}>
-              Today: {getStatusLabel(worker.todayAttendance)}
-            </Text>
-            <Text style={styles.statusBannerTime}>
-              {formatTime(worker.attendanceMarkedAt)}
-            </Text>
+            <View style={styles.statusBannerRow}>
+              <View style={styles.statusBannerLeft}>
+                <Text style={styles.statusBannerText}>
+                  Today: {getStatusLabel(worker.todayAttendance)}
+                </Text>
+                {worker.attendanceMarkedAt && (
+                  <View style={styles.attendanceTimestamp}>
+                    <Text style={styles.attendanceTimestampIcon}>🕐</Text>
+                    <Text style={styles.attendanceTimestampText}>
+                      Marked at {formatTime(worker.attendanceMarkedAt)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              {worker.attendanceMarkedAt && (
+                <View style={styles.verifiedBadge}>
+                  <Text style={styles.verifiedBadgeText}>✓ Verified</Text>
+                </View>
+              )}
+            </View>
           </View>
 
           {worker.attendanceReason && (
@@ -258,17 +272,34 @@ const WorkerProfileSheet: React.FC = () => {
             </View>
           </View>
           {worker.recentIncidentsCount > 0 ? (
-            <TouchableOpacity
-              style={styles.viewMoreButton}
-              onPress={handleViewIncidents}
-            >
-              <Text style={styles.viewMoreButtonText}>
-                View {worker.recentIncidentsCount} incident(s) →
-              </Text>
-            </TouchableOpacity>
+            <>
+              <View style={styles.incidentAlert}>
+                <Text style={styles.incidentAlertIcon}>⚠️</Text>
+                <View style={styles.incidentAlertContent}>
+                  <Text style={styles.incidentAlertText}>
+                    {worker.recentIncidentsCount} incident(s) in the last 30
+                    days
+                  </Text>
+                  <Text style={styles.incidentAlertSubtext}>
+                    Requires attention and review
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.viewMoreButton}
+                onPress={handleViewIncidents}
+              >
+                <Text style={styles.viewMoreButtonText}>
+                  View All Incidents →
+                </Text>
+              </TouchableOpacity>
+            </>
           ) : (
             <View style={styles.emptyBox}>
-              <Text style={styles.emptyText}>No recent incidents</Text>
+              <Text style={styles.emptyText}>✅ No recent incidents</Text>
+              <Text style={styles.emptySubtext}>
+                Good safety record maintained
+              </Text>
             </View>
           )}
         </View>
@@ -276,12 +307,38 @@ const WorkerProfileSheet: React.FC = () => {
         {/* Latest Remarks */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>💬 Latest Remarks</Text>
-          <View style={styles.placeholderBox}>
-            <Text style={styles.placeholderText}>No remarks yet</Text>
-            <Text style={styles.placeholderHint}>
-              Remarks from foreman will appear here when added
-            </Text>
-          </View>
+          {worker.latestRemark ? (
+            <View style={styles.remarkPreview}>
+              <View style={styles.remarkHeader}>
+                <Text style={styles.remarkDate}>
+                  {formatDate(worker.latestRemark.timestamp)}
+                </Text>
+                <View style={styles.remarkTypeBadge}>
+                  <Text style={styles.remarkTypeBadgeText}>
+                    {worker.latestRemark.type}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.remarkText} numberOfLines={2}>
+                {worker.latestRemark.text}
+              </Text>
+              <View style={styles.remarkFooter}>
+                <Text style={styles.remarkAuthor}>
+                  By: {worker.latestRemark.author}
+                </Text>
+                <TouchableOpacity onPress={handleAddRemark}>
+                  <Text style={styles.remarkViewAll}>View All →</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.placeholderBox}>
+              <Text style={styles.placeholderText}>No remarks yet</Text>
+              <Text style={styles.placeholderHint}>
+                Add remarks to track performance and behavior
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Action Buttons */}
@@ -420,11 +477,48 @@ const styles = StyleSheet.create({
     padding: 12,
     marginTop: 8,
   },
+  statusBannerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  statusBannerLeft: {
+    flex: 1,
+  },
   statusBannerText: {
     fontSize: 15,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 2,
+    marginBottom: 8,
+  },
+  attendanceTimestamp: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  attendanceTimestampIcon: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  attendanceTimestampText: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  verifiedBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  verifiedBadgeText: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: 'bold',
   },
   statusBannerTime: {
     fontSize: 12,
@@ -536,6 +630,90 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#94a3b8',
     fontStyle: 'italic',
+  },
+  emptySubtext: {
+    fontSize: 12,
+    color: '#cbd5e1',
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+  incidentAlert: {
+    flexDirection: 'row',
+    backgroundColor: '#fef2f2',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#ef4444',
+  },
+  incidentAlertIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  incidentAlertContent: {
+    flex: 1,
+  },
+  incidentAlertText: {
+    fontSize: 14,
+    color: '#991b1b',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  incidentAlertSubtext: {
+    fontSize: 12,
+    color: '#b91c1c',
+    fontStyle: 'italic',
+  },
+  remarkPreview: {
+    backgroundColor: '#fef3c7',
+    borderRadius: 8,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#f59e0b',
+  },
+  remarkHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  remarkDate: {
+    fontSize: 11,
+    color: '#92400e',
+    fontWeight: '600',
+  },
+  remarkTypeBadge: {
+    backgroundColor: '#fbbf24',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  remarkTypeBadgeText: {
+    fontSize: 10,
+    color: '#fff',
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+  },
+  remarkText: {
+    fontSize: 13,
+    color: '#78350f',
+    marginBottom: 8,
+    lineHeight: 18,
+  },
+  remarkFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  remarkAuthor: {
+    fontSize: 11,
+    color: '#92400e',
+    fontStyle: 'italic',
+  },
+  remarkViewAll: {
+    fontSize: 12,
+    color: '#1e3a5f',
+    fontWeight: '600',
   },
   viewMoreButton: {
     backgroundColor: '#fef3c7',

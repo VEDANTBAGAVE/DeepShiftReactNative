@@ -35,6 +35,24 @@ import SubmittedReportsScreen from '../screens/foreman/SubmittedReportsScreen';
 import NotificationsScreen from '../screens/foreman/NotificationsScreen';
 import ForemanProfileScreen from '../screens/foreman/ForemanProfileScreen';
 
+// Overman module screens
+import SectionReportsScreen from '../screens/overman/SectionReportsScreen';
+import SafetyOverviewScreen from '../screens/overman/SafetyOverviewScreen';
+import SectionSummaryScreen from '../screens/overman/SectionSummaryScreen';
+import ReviewSectionReportScreen from '../screens/overman/ReviewSectionReportScreen';
+import CreateShiftLogScreen from '../screens/overman/CreateShiftLogScreen';
+import SubmittedLogsScreen from '../screens/overman/SubmittedLogsScreen';
+import RemarksPanelScreen from '../screens/overman/RemarksPanelScreen';
+
+// Manager module screens
+import ShiftReportsOverview from '../screens/manager/ShiftReportsOverview';
+import ShiftLogDetail from '../screens/manager/ShiftLogDetail';
+import SafetyAnalytics from '../screens/manager/SafetyAnalytics';
+import EquipmentOverview from '../screens/manager/EquipmentOverview';
+import CrewPerformance from '../screens/manager/CrewPerformance';
+import CommunicationPanel from '../screens/manager/CommunicationPanel';
+import ReportsArchive from '../screens/manager/ReportsArchive';
+
 const Stack = createStackNavigator<RootStackParamList>();
 
 const AppNavigator = () => {
@@ -123,6 +141,51 @@ const AppNavigator = () => {
           name="ForemanProfileScreen"
           component={ForemanProfileScreen}
         />
+
+        {/* Overman module screens */}
+        <Stack.Screen
+          name="SectionReportsScreen"
+          component={SectionReportsScreen}
+        />
+        <Stack.Screen
+          name="SafetyOverviewScreen"
+          component={SafetyOverviewScreen}
+        />
+        <Stack.Screen
+          name="SectionSummaryScreen"
+          component={SectionSummaryScreen}
+        />
+        <Stack.Screen
+          name="ReviewSectionReportScreen"
+          component={ReviewSectionReportScreen}
+        />
+        <Stack.Screen
+          name="CreateShiftLogScreen"
+          component={CreateShiftLogScreen}
+        />
+        <Stack.Screen
+          name="SubmittedLogsScreen"
+          component={SubmittedLogsScreen}
+        />
+        <Stack.Screen
+          name="RemarksPanelScreen"
+          component={RemarksPanelScreen}
+        />
+
+        {/* Manager module screens */}
+        <Stack.Screen
+          name="ShiftReportsOverview"
+          component={ShiftReportsOverview}
+        />
+        <Stack.Screen name="ShiftLogDetail" component={ShiftLogDetail} />
+        <Stack.Screen name="SafetyAnalytics" component={SafetyAnalytics} />
+        <Stack.Screen name="EquipmentOverview" component={EquipmentOverview} />
+        <Stack.Screen name="CrewPerformance" component={CrewPerformance} />
+        <Stack.Screen
+          name="CommunicationPanel"
+          component={CommunicationPanel}
+        />
+        <Stack.Screen name="ReportsArchive" component={ReportsArchive} />
       </Stack.Navigator>
     </NavigationContainer>
   );

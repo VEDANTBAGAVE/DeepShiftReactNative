@@ -1,0 +1,624 @@
+import React, { useState } from 'react';
+import {
+  View,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  SafeAreaView,
+  ScrollView,
+  TextInput,
+  Alert,
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../../navigation/types';
+
+type SectionReportScreenNavigationProp =
+  StackNavigationProp<RootStackParamList>;
+
+const SectionReportScreen: React.FC = () => {
+  const navigation = useNavigation<SectionReportScreenNavigationProp>();
+  const [currentStep, setCurrentStep] = useState(1);
+
+  // Form Data State
+  const [formData, setFormData] = useState({
+    // Step 1: Report Details
+    date: new Date().toISOString().split('T')[0],
+    shift: 'Morning Shift',
+    section: 'Panel 5-A',
+    foremanName: 'Rajesh Kumar',
+    
+    // Step 2: Crew Summary
+    crewPresent: '7',
+    crewAbsent: '1',
+    crewLate: '0',
+    crewEarlyDeparture: '0',
+    crewRemarks: '',
+    
+    // Step 3: Equipment Status
+    equipmentOperational: '5',
+    equipmentMaintenance: '1',
+    equipmentBreakdown: '0',
+    equipmentNotes: '',
+    
+    // Step 4: Safety & Environment
+    safetyChecksCompleted: true,
+    incidentsReported: '0',
+    hazardsIdentified: '0',
+    airQuality: 'Good',
+    safetyRemarks: '',
+    
+    // Step 5: Work Progress
+    productionTarget: '50',
+    productionActual: '45',
+    workDelays: '',
+    progressRemarks: '',
+    
+    // Step 6: Permits & Compliance
+    permitsValid: true,
+    inspectionsDone: true,
+    violationsFound: '0',
+    complianceNotes: '',
+  });
+
+  const updateField = (field: string, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleNext = () => {
+    if (currentStep < 6) {
+      setCurrentStep(currentStep + 1);
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  const handleSubmit = () => {
+    Alert.alert(
+      'Submit Report',
+      'Are you sure you want to submit this section report to the Overman?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Submit', 
+          style: 'default',
+          onPress: () => {
+            Alert.alert('Success', 'Section report submitted successfully!');
+            navigation.goBack();
+          }
+        },
+      ]
+    );
+  };
+
+  const handleSaveDraft = () => {
+    Alert.alert('Draft Saved', 'Your report has been saved as a draft.');
+  };
+];
+
+const SectionReportScreen: React.FC = () => {
+  const navigation = useNavigation<SectionReportScreenNavigationProp>();
+  const [currentStep, setCurrentStep] = useState(1);
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Section Report</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+
+      {/* Progress Stepper */}
+      <View style={styles.stepperContainer}>
+        <Text style={styles.stepperTitle}>6-Step Report Form</Text>
+        <View style={styles.stepperRow}>
+          {[1, 2, 3, 4, 5, 6].map(step => (
+            <View key={step} style={styles.stepItem}>
+              <TouchableOpacity
+                style={[
+                  styles.stepCircle,
+                  currentStep === step && styles.stepCircleActive,
+                  currentStep > step && styles.stepCircleCompleted,
+                ]}
+                onPress={() => setCurrentStep(step)}
+              >
+                <Text
+                  style={[
+                    styles.stepNumber,
+                    (currentStep === step || currentStep > step) &&
+                      styles.stepNumberActive,
+                  ]}
+                >
+                  {currentStep > step ? '✓' : step}
+                </Text>
+              </TouchableOpacity>
+              {step < 6 && (
+                <View
+                  style={[
+                    styles.stepLine,
+                    currentStep > step && styles.stepLineCompleted,
+                  ]}
+                />
+              )}
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <ScrollView style={styles.scrollView}>
+        {/* Preview Notice */}
+        <View style={styles.previewNotice}>
+          <Text style={styles.previewIcon}>👁️</Text>
+          <Text style={styles.previewText}>
+            UI Preview: This shows the 6-step form structure. Each step will
+            have input fields, validation, and photo upload.
+          </Text>
+        </View>
+
+        {/* Current Section Preview */}
+        <View style={styles.currentSectionCard}>
+          <View style={styles.currentSectionHeader}>
+            <View style={styles.currentSectionTitleRow}>
+              <Text style={styles.currentSectionIcon}>
+                {FORM_SECTIONS[currentStep - 1].icon}
+              </Text>
+              <View>
+                <Text style={styles.currentSectionTitle}>
+                  Step {currentStep}: {FORM_SECTIONS[currentStep - 1].title}
+                </Text>
+                <Text style={styles.currentSectionDescription}>
+                  {FORM_SECTIONS[currentStep - 1].description}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Field Preview */}
+          <View style={styles.fieldsContainer}>
+            <Text style={styles.fieldsTitle}>Fields in this section:</Text>
+            {FORM_SECTIONS[currentStep - 1].fields.map((field, index) => (
+              <View key={index} style={styles.fieldRow}>
+                <View style={styles.fieldBullet} />
+                <Text style={styles.fieldText}>{field}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* All Sections Overview */}
+        <View style={styles.overviewContainer}>
+          <Text style={styles.overviewTitle}>📝 Complete Form Overview</Text>
+          {FORM_SECTIONS.map(section => (
+            <TouchableOpacity
+              key={section.step}
+              style={[
+                styles.sectionCard,
+                currentStep === section.step && styles.sectionCardActive,
+              ]}
+              onPress={() => setCurrentStep(section.step)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.sectionCardHeader}>
+                <View style={styles.sectionCardTitleRow}>
+                  <Text style={styles.sectionCardIcon}>{section.icon}</Text>
+                  <View style={styles.sectionCardInfo}>
+                    <Text style={styles.sectionCardStep}>
+                      Step {section.step} of 6
+                    </Text>
+                    <Text style={styles.sectionCardTitle}>{section.title}</Text>
+                  </View>
+                </View>
+                {currentStep === section.step ? (
+                  <View style={styles.activeBadge}>
+                    <Text style={styles.activeBadgeText}>CURRENT</Text>
+                  </View>
+                ) : currentStep > section.step ? (
+                  <Text style={styles.completedIcon}>✅</Text>
+                ) : null}
+              </View>
+              <Text style={styles.sectionCardDescription}>
+                {section.description}
+              </Text>
+              <View style={styles.fieldsList}>
+                {section.fields.map((field, index) => (
+                  <Text key={index} style={styles.fieldsListItem}>
+                    • {field}
+                  </Text>
+                ))}
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Action Buttons */}
+        <View style={styles.actionsContainer}>
+          <TouchableOpacity style={styles.draftButton} onPress={() => {}}>
+            <Text style={styles.draftButtonText}>💾 Save as Draft</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.submitButton} onPress={() => {}}>
+            <Text style={styles.submitButtonText}>✓ Submit Report</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Features Info */}
+        <View style={styles.featuresCard}>
+          <Text style={styles.featuresTitle}>✨ Form Features</Text>
+          <View style={styles.featureItem}>
+            <Text style={styles.featureIcon}>📸</Text>
+            <Text style={styles.featureText}>
+              Photo evidence upload for incidents and equipment
+            </Text>
+          </View>
+          <View style={styles.featureItem}>
+            <Text style={styles.featureIcon}>✓</Text>
+            <Text style={styles.featureText}>
+              Real-time validation with error messages
+            </Text>
+          </View>
+          <View style={styles.featureItem}>
+            <Text style={styles.featureIcon}>💾</Text>
+            <Text style={styles.featureText}>Auto-save every 20 seconds</Text>
+          </View>
+          <View style={styles.featureItem}>
+            <Text style={styles.featureIcon}>📱</Text>
+            <Text style={styles.featureText}>
+              Offline support with draft recovery
+            </Text>
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f0f4f8',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#1e3a5f',
+    elevation: 4,
+  },
+  backButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  backButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+    letterSpacing: 0.5,
+  },
+  headerSpacer: {
+    width: 70,
+  },
+  stepperContainer: {
+    backgroundColor: '#fff',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e2e8f0',
+  },
+  stepperTitle: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#64748b',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  stepperRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stepCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#e2e8f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#cbd5e1',
+  },
+  stepCircleActive: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#2563eb',
+  },
+  stepCircleCompleted: {
+    backgroundColor: '#10b981',
+    borderColor: '#059669',
+  },
+  stepNumber: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#64748b',
+  },
+  stepNumberActive: {
+    color: '#fff',
+  },
+  stepLine: {
+    width: 24,
+    height: 2,
+    backgroundColor: '#e2e8f0',
+    marginHorizontal: 4,
+  },
+  stepLineCompleted: {
+    backgroundColor: '#10b981',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  previewNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#fef3c7',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 12,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#f59e0b',
+  },
+  previewIcon: {
+    fontSize: 18,
+    marginRight: 10,
+    marginTop: 2,
+  },
+  previewText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#92400e',
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  currentSectionCard: {
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 18,
+    borderRadius: 12,
+    elevation: 3,
+    shadowColor: '#3b82f6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    borderLeftWidth: 4,
+    borderLeftColor: '#3b82f6',
+  },
+  currentSectionHeader: {
+    marginBottom: 16,
+  },
+  currentSectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  currentSectionIcon: {
+    fontSize: 32,
+    marginRight: 12,
+  },
+  currentSectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1e293b',
+    marginBottom: 4,
+  },
+  currentSectionDescription: {
+    fontSize: 13,
+    color: '#64748b',
+    lineHeight: 18,
+  },
+  fieldsContainer: {
+    backgroundColor: '#f8fafc',
+    padding: 12,
+    borderRadius: 8,
+  },
+  fieldsTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#475569',
+    marginBottom: 10,
+  },
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  fieldBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#3b82f6',
+    marginRight: 10,
+  },
+  fieldText: {
+    fontSize: 14,
+    color: '#1e293b',
+    fontWeight: '500',
+  },
+  overviewContainer: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  overviewTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1e293b',
+    marginBottom: 12,
+  },
+  sectionCard: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    elevation: 2,
+    shadowColor: '#1e3a5f',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: '#e2e8f0',
+  },
+  sectionCardActive: {
+    borderLeftColor: '#3b82f6',
+    backgroundColor: '#eff6ff',
+  },
+  sectionCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  sectionCardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  sectionCardIcon: {
+    fontSize: 28,
+    marginRight: 12,
+  },
+  sectionCardInfo: {
+    flex: 1,
+  },
+  sectionCardStep: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  sectionCardTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1e293b',
+  },
+  activeBadge: {
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  activeBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.5,
+  },
+  completedIcon: {
+    fontSize: 24,
+  },
+  sectionCardDescription: {
+    fontSize: 13,
+    color: '#64748b',
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  fieldsList: {
+    backgroundColor: '#f8fafc',
+    padding: 10,
+    borderRadius: 6,
+  },
+  fieldsListItem: {
+    fontSize: 12,
+    color: '#475569',
+    marginBottom: 4,
+    lineHeight: 18,
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    gap: 12,
+  },
+  draftButton: {
+    flex: 1,
+    backgroundColor: '#64748b',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    elevation: 2,
+  },
+  draftButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  submitButton: {
+    flex: 1,
+    backgroundColor: '#10b981',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    elevation: 3,
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  featuresCard: {
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    marginBottom: 24,
+    padding: 16,
+    borderRadius: 12,
+    elevation: 2,
+    borderTopWidth: 3,
+    borderTopColor: '#8b5cf6',
+  },
+  featuresTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#1e293b',
+    marginBottom: 14,
+  },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  featureIcon: {
+    fontSize: 18,
+    marginRight: 12,
+    marginTop: 2,
+  },
+  featureText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#475569',
+    lineHeight: 20,
+  },
+});
+
+export default SectionReportScreen;

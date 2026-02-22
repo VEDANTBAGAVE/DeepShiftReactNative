@@ -17,7 +17,7 @@ const HomeScreen = () => {
   };
 
   const navigateToOvermanDashboard = () => {
-    navigation.navigate('OvermanDashboard');
+    navigation.navigate('SupervisorDashboard');
   };
 
   const navigateToForemanDashboard = () => {

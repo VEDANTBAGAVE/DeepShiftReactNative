@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -11,6 +11,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { useForeman } from '../context/ForemanContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type ForemanDashboardNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -21,6 +22,7 @@ interface FeatureCardProps {
   onPress: () => void;
   badge?: string;
   badgeColor?: string;
+  severityColor?: string; // For color-coding by severity
 }
 
 const FeatureCard: React.FC<FeatureCardProps> = ({
@@ -30,8 +32,18 @@ const FeatureCard: React.FC<FeatureCardProps> = ({
   onPress,
   badge,
   badgeColor = '#ef4444',
+  severityColor,
 }) => (
-  <TouchableOpacity style={styles.featureCard} onPress={onPress}>
+  <TouchableOpacity
+    style={[
+      styles.featureCard,
+      severityColor
+        ? { borderTopColor: severityColor, borderTopWidth: 4 }
+        : null,
+    ]}
+    onPress={onPress}
+    activeOpacity={0.7}
+  >
     {badge && (
       <View style={[styles.badge, { backgroundColor: badgeColor }]}>
         <Text style={styles.badgeText}>{badge}</Text>
@@ -57,15 +69,58 @@ const ForemanDashboard: React.FC = () => {
     unreadNotifications: 0,
   });
 
+  // Track "since you last visited" deltas
+  const [deltas, setDeltas] = useState<{
+    incidents?: number;
+    reopenedReports?: number;
+    newNotifications?: number;
+  }>({});
+
+  // Load previous stats and calculate deltas
+  const loadDeltas = useCallback(async (currentStats: typeof stats) => {
+    try {
+      const lastStatsJson = await AsyncStorage.getItem('@lastVisitStats');
+      if (lastStatsJson) {
+        const lastStats = JSON.parse(lastStatsJson);
+        const newDeltas: typeof deltas = {};
+
+        // Calculate deltas
+        if (currentStats.openIncidents > lastStats.openIncidents) {
+          newDeltas.incidents =
+            currentStats.openIncidents - lastStats.openIncidents;
+        }
+        if (currentStats.reopenedReports > lastStats.reopenedReports) {
+          newDeltas.reopenedReports =
+            currentStats.reopenedReports - lastStats.reopenedReports;
+        }
+        if (currentStats.unreadNotifications > lastStats.unreadNotifications) {
+          newDeltas.newNotifications =
+            currentStats.unreadNotifications - lastStats.unreadNotifications;
+        }
+
+        setDeltas(newDeltas);
+      }
+
+      // Save current stats as "last visit"
+      await AsyncStorage.setItem(
+        '@lastVisitStats',
+        JSON.stringify(currentStats),
+      );
+    } catch (error) {
+      console.log('Error loading deltas:', error);
+    }
+  }, []);
+
   // Refresh stats when screen comes into focus
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
       const refreshStats = () => {
         const dashboardStats = getDashboardStats();
         setStats(dashboardStats);
+        loadDeltas(dashboardStats);
       };
       refreshStats();
-    }, [getDashboardStats]),
+    }, [getDashboardStats, loadDeltas]),
   );
 
   const handleLogout = () => {
@@ -140,6 +195,63 @@ const ForemanDashboard: React.FC = () => {
       </View>
 
       <ScrollView style={styles.scrollView}>
+        {/* Since You Last Visited - Deltas */}
+        {deltas.incidents ||
+        deltas.reopenedReports ||
+        deltas.newNotifications ? (
+          <View style={styles.deltaCard}>
+            <Text style={styles.deltaTitle}>📊 Since you last visited</Text>
+            <View style={styles.deltaList}>
+              {deltas.incidents ? (
+                <View style={styles.deltaItem}>
+                  <View
+                    style={[
+                      styles.deltaIndicator,
+                      { backgroundColor: '#ef4444' },
+                    ]}
+                  />
+                  <Text style={styles.deltaText}>
+                    <Text style={styles.deltaBold}>+{deltas.incidents}</Text>{' '}
+                    new incident{deltas.incidents > 1 ? 's' : ''}
+                  </Text>
+                </View>
+              ) : null}
+              {deltas.reopenedReports ? (
+                <View style={styles.deltaItem}>
+                  <View
+                    style={[
+                      styles.deltaIndicator,
+                      { backgroundColor: '#f59e0b' },
+                    ]}
+                  />
+                  <Text style={styles.deltaText}>
+                    <Text style={styles.deltaBold}>
+                      {deltas.reopenedReports}
+                    </Text>{' '}
+                    report{deltas.reopenedReports > 1 ? 's' : ''} reopened
+                  </Text>
+                </View>
+              ) : null}
+              {deltas.newNotifications ? (
+                <View style={styles.deltaItem}>
+                  <View
+                    style={[
+                      styles.deltaIndicator,
+                      { backgroundColor: '#3b82f6' },
+                    ]}
+                  />
+                  <Text style={styles.deltaText}>
+                    <Text style={styles.deltaBold}>
+                      {deltas.newNotifications}
+                    </Text>{' '}
+                    new notification{deltas.newNotifications > 1 ? 's' : ''}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
         {/* Section Overview */}
         <View style={styles.overviewCard}>
           <Text style={styles.overviewTitle}>Section Overview</Text>
@@ -192,6 +304,7 @@ const ForemanDashboard: React.FC = () => {
                 : undefined
             }
             badgeColor="#ef4444"
+            severityColor={stats.openIncidents > 0 ? '#ef4444' : undefined}
           />
           <FeatureCard
             icon="📄"
@@ -204,6 +317,7 @@ const ForemanDashboard: React.FC = () => {
                 : undefined
             }
             badgeColor="#f59e0b"
+            severityColor={stats.reopenedReports > 0 ? '#f59e0b' : undefined}
           />
         </View>
 
@@ -303,9 +417,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   notificationIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: 'rgba(245, 158, 11, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -333,9 +447,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   profileIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -357,6 +471,52 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  // Delta Card Styles
+  deltaCard: {
+    backgroundColor: '#fff',
+    margin: 16,
+    marginTop: 12,
+    marginBottom: 8,
+    padding: 16,
+    borderRadius: 12,
+    elevation: 2,
+    shadowColor: '#1e3a5f',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    borderLeftWidth: 4,
+    borderLeftColor: '#3b82f6',
+  },
+  deltaTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#1e293b',
+    marginBottom: 12,
+  },
+  deltaList: {
+    gap: 8,
+  },
+  deltaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  deltaIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 10,
+  },
+  deltaText: {
+    fontSize: 14,
+    color: '#475569',
+    flex: 1,
+  },
+  deltaBold: {
+    fontWeight: '700',
+    color: '#1e293b',
+    fontSize: 15,
   },
   overviewCard: {
     backgroundColor: '#fff',
@@ -468,11 +628,13 @@ const styles = StyleSheet.create({
   },
   submitReportButton: {
     backgroundColor: '#3b82f6',
-    paddingVertical: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
     borderRadius: 12,
     alignItems: 'center',
     elevation: 2,
     marginBottom: 10,
+    minHeight: 50,
   },
   submitReportButtonText: {
     color: '#fff',
@@ -523,10 +685,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#dc2626',
     marginHorizontal: 16,
     marginVertical: 20,
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
     elevation: 3,
+    minHeight: 50,
   },
   logoutButtonText: {
     color: '#fff',

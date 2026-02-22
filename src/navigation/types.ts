@@ -32,4 +32,21 @@ export type RootStackParamList = {
   SubmittedReportsScreen: undefined;
   NotificationsScreen: undefined;
   ForemanProfileScreen: undefined;
+  // Overman module screens
+  SectionReportsScreen: undefined;
+  SafetyOverviewScreen: undefined;
+  CreateShiftLogScreen: undefined;
+  SubmittedLogsScreen: undefined;
+  SectionSummaryScreen: undefined;
+  ReviewSectionReportScreen: { sectionId?: string; reportId?: string };
+  RemarksPanelScreen: undefined;
+
+  // Manager module screens
+  ShiftReportsOverview: undefined;
+  ShiftLogDetail: { reportId?: string };
+  SafetyAnalytics: undefined;
+  EquipmentOverview: undefined;
+  CrewPerformance: undefined;
+  CommunicationPanel: undefined;
+  ReportsArchive: undefined;
 };

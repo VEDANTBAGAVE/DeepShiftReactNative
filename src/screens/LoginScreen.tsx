@@ -11,10 +11,9 @@ import {
 import { TextInput, Button, Text, HelperText } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
+import { useAuth } from '../context/AuthContext';
 
 type LoginScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
@@ -23,6 +22,7 @@ type LoginScreenNavigationProp = StackNavigationProp<
 
 const LoginScreen: React.FC = () => {
   const navigation = useNavigation<LoginScreenNavigationProp>();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -71,38 +71,36 @@ const LoginScreen: React.FC = () => {
     setLoading(true);
 
     try {
-      // Replace with your actual API endpoint
-      const response = await axios.post('/api/auth/login', {
-        email,
-        password,
-      });
+      // Login with Supabase authentication
+      await login(email, password);
 
-      const { token, role, user_id } = response.data;
-
-      // Store authentication data
-      await AsyncStorage.setItem('token', token);
-      await AsyncStorage.setItem('user_id', user_id);
-      await AsyncStorage.setItem('user_role', role);
+      // Get user role from auth context and navigate accordingly
+      const { authService } = await import('../services/authService');
+      const userInfo = await authService.getCurrentUserInfo();
 
       // Navigate based on user role
-      switch (role) {
+      switch (userInfo.role) {
         case 'worker':
           navigation.navigate('WorkerDashboard');
           break;
-        case 'supervisor':
-          navigation.navigate('SupervisorDashboard');
+        case 'foreman':
+          navigation.navigate('ForemanDashboard');
           break;
-        case 'admin':
-          navigation.navigate('AdminDashboard');
+        case 'overman':
+          navigation.navigate('OvermanDashboard');
+          break;
+        case 'manager':
+          navigation.navigate('ManagerDashboard');
           break;
         default:
           setErrors({ ...errors, general: 'Invalid user role' });
       }
     } catch (error: any) {
-      if (error.response && error.response.status === 401) {
+      const errorMessage = error?.message || 'An error occurred';
+      if (errorMessage.includes('Invalid login credentials')) {
         setErrors({ ...errors, general: 'Incorrect email or password' });
       } else {
-        setErrors({ ...errors, general: 'Network error. Please try again.' });
+        setErrors({ ...errors, general: errorMessage });
       }
     } finally {
       setLoading(false);

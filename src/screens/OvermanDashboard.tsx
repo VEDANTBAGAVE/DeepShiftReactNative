@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -6,10 +6,13 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
+import { useAuth } from '../context/AuthContext';
+import { useOvermanDashboard } from '../hooks/useDashboard';
 
 type OvermanDashboardNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -51,39 +54,36 @@ const FeatureCard: React.FC<FeatureCardProps> = ({
 
 const OvermanDashboard: React.FC = () => {
   const navigation = useNavigation<OvermanDashboardNavigationProp>();
+  const { user, logout } = useAuth();
+  const { shifts, pendingShifts, isLoading, refreshData } = useOvermanDashboard();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logout();
     navigation.navigate('HomeScreen');
   };
 
   const handleProfileSettings = () => {
-    console.log('Opening Profile & Settings...');
-    // TODO: Navigate to profile settings
+    navigation.navigate('SectionSummaryScreen');
   };
 
   const handleReviewSectionReports = () => {
-    console.log('Opening Review Section Reports...');
-    // TODO: Navigate to section reports review
+    navigation.navigate('SectionReportsScreen');
   };
 
   const handleMergeShiftLog = () => {
-    console.log('Opening Merge Shift Log...');
-    // TODO: Navigate to merge shift log form
+    navigation.navigate('CreateShiftLogScreen');
   };
 
   const handleIncidentReview = () => {
-    console.log('Opening Incident Review...');
-    // TODO: Navigate to all incidents review
+    navigation.navigate('SafetyOverviewScreen');
   };
 
   const handleSubmittedLogs = () => {
-    console.log('Opening Submitted Shift Logs...');
-    // TODO: Navigate to submitted logs history
+    navigation.navigate('SubmittedLogsScreen');
   };
 
   const handleNotifications = () => {
-    console.log('Opening Notifications...');
-    // TODO: Navigate to notifications
+    navigation.navigate('RemarksPanelScreen');
   };
 
   return (
@@ -93,7 +93,7 @@ const OvermanDashboard: React.FC = () => {
         <View style={styles.headerLeft}>
           <View>
             <Text style={styles.headerTitle}>DEEPSHIFT</Text>
-            <Text style={styles.headerSubtitle}>Overman / Supervisor</Text>
+            <Text style={styles.headerSubtitle}>{user?.name || 'Overman'}</Text>
           </View>
           <View style={styles.roleBadge}>
             <Text style={styles.roleBadgeText}>👔 OVERMAN</Text>
@@ -177,11 +177,11 @@ const OvermanDashboard: React.FC = () => {
           <FeatureCard
             icon="📑"
             title="Review Section Reports"
-            subtitle="3 Foremen Submitted"
+            subtitle={`${pendingShifts.length} Pending Review`}
             onPress={handleReviewSectionReports}
-            badge="3"
+            badge={pendingShifts.length > 0 ? pendingShifts.length.toString() : undefined}
             badgeColor="#f59e0b"
-            hasWarning
+            hasWarning={pendingShifts.length > 0}
           />
           <FeatureCard
             icon="🔄"
@@ -202,7 +202,7 @@ const OvermanDashboard: React.FC = () => {
             title="Submitted Logs"
             subtitle="Sent to Manager"
             onPress={handleSubmittedLogs}
-            badge="1"
+            badge={shifts.filter(s => s.status === 'submitted').length > 0 ? shifts.filter(s => s.status === 'submitted').length.toString() : undefined}
             badgeColor="#10b981"
           />
         </View>

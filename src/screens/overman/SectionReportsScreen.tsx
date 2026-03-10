@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -7,13 +7,14 @@ import {
   SafeAreaView,
   ScrollView,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
+import { useOvermanDashboard } from '../../hooks/useDashboard';
 
-type SectionReportsScreenNavigationProp =
-  StackNavigationProp<RootStackParamList>;
+type SectionReportsScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
 interface SectionReport {
   id: string;
@@ -30,75 +31,45 @@ interface SectionReport {
 
 const SectionReportsScreen: React.FC = () => {
   const navigation = useNavigation<SectionReportsScreenNavigationProp>();
+  const { shifts, isLoading, refreshData } = useOvermanDashboard();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<
     'all' | 'pending' | 'approved' | 'flagged'
   >('all');
 
-  // Demo data - section reports submitted by foremen
-  const [reports] = useState<SectionReport[]>([
-    {
-      id: 'SR001',
-      sectionName: 'Panel 5-A',
-      foremanName: 'Rajesh Kumar',
-      shiftType: 'Morning Shift',
-      submittedAt: '08:15 AM',
-      status: 'pending',
-      crewPresent: 7,
-      crewAbsent: 1,
-      incidents: 0,
-      safetyScore: 95,
-    },
-    {
-      id: 'SR002',
-      sectionName: 'Panel 5-B',
-      foremanName: 'Suresh Patil',
-      shiftType: 'Morning Shift',
-      submittedAt: '08:22 AM',
-      status: 'approved',
-      crewPresent: 8,
+  // Map Supabase shifts to SectionReport display format
+  const reports = useMemo<SectionReport[]>(() => {
+    return shifts.map(s => ({
+      id: s.id,
+      sectionName: s.section_id,
+      foremanName: 'Foreman',
+      shiftType: `${s.shift_type.charAt(0).toUpperCase() + s.shift_type.slice(1)} Shift`,
+      submittedAt: s.submitted_at
+        ? new Date(s.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : 'Not submitted',
+      status: s.status === 'submitted' ? 'pending'
+            : s.status === 'approved' ? 'approved'
+            : s.status === 'archived' ? 'approved'
+            : 'pending',
+      crewPresent: 0,
       crewAbsent: 0,
       incidents: 0,
-      safetyScore: 98,
-    },
-    {
-      id: 'SR003',
-      sectionName: 'Panel 6-A',
-      foremanName: 'Amit Sharma',
-      shiftType: 'Morning Shift',
-      submittedAt: '08:45 AM',
-      status: 'flagged',
-      crewPresent: 6,
-      crewAbsent: 2,
-      incidents: 1,
-      safetyScore: 78,
-    },
-    {
-      id: 'SR004',
-      sectionName: 'Panel 7-A',
-      foremanName: 'Vijay Singh',
-      shiftType: 'Morning Shift',
-      submittedAt: '09:10 AM',
-      status: 'pending',
-      crewPresent: 7,
-      crewAbsent: 1,
-      incidents: 0,
-      safetyScore: 92,
-    },
-    {
-      id: 'SR005',
-      sectionName: 'Panel 8-C',
-      foremanName: 'Deepak Yadav',
-      shiftType: 'Morning Shift',
-      submittedAt: '09:30 AM',
-      status: 'pending',
-      crewPresent: 5,
-      crewAbsent: 0,
-      incidents: 0,
-      safetyScore: 90,
-    },
-  ]);
+      safetyScore: 100,
+    }));
+  }, [shifts]);
+
+  const handleReportPress = (reportId: string) => {
+    navigation.navigate('ReviewSectionReportScreen', { reportId });
+  };
+
+  const handleApproveReport = (reportId: string) => {
+    console.log('Approving report:', reportId);
+  };
+
+  const handleFlagReport = (reportId: string) => {
+    console.log('Flagging report:', reportId);
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -127,21 +98,6 @@ const SectionReportsScreen: React.FC = () => {
       filterStatus === 'all' || report.status === filterStatus;
     return matchesSearch && matchesFilter;
   });
-
-  const handleReportPress = (reportId: string) => {
-    console.log('Opening report:', reportId);
-    // TODO: Navigate to detailed report view
-  };
-
-  const handleApproveReport = (reportId: string) => {
-    console.log('Approving report:', reportId);
-    // TODO: Implement approve logic
-  };
-
-  const handleFlagReport = (reportId: string) => {
-    console.log('Flagging report:', reportId);
-    // TODO: Implement flag logic
-  };
 
   return (
     <SafeAreaView style={styles.container}>

@@ -12,7 +12,7 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
-import { useForeman } from '../../context/ForemanContext';
+import { useForemanDashboard } from '../../hooks/useDashboard';
 import { TaskPriority, TaskCategory } from '../../types/worker';
 
 type CreateTaskScreenRouteProp = RouteProp<
@@ -39,7 +39,7 @@ const CreateTaskScreen: React.FC = () => {
   const navigation = useNavigation<CreateTaskScreenNavigationProp>();
   const route = useRoute<CreateTaskScreenRouteProp>();
   const { selectedWorkers = [] } = route.params || {};
-  const { createTask, getWorkers, getWorkerById } = useForeman();
+  const { workers } = useForemanDashboard();
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<TaskCategory>('other');
@@ -50,75 +50,39 @@ const CreateTaskScreen: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
 
-  const allWorkers = getWorkers();
+  const allWorkers = workers;
   const selectedWorkerNames = assigneeIds
-    .map(id => getWorkerById(id)?.name || 'Unknown')
+    .map(id => workers.find(w => w.id === id)?.name || 'Unknown')
     .join(', ');
 
   const handleSubmit = async () => {
-    // Validation
     if (!title.trim()) {
       Alert.alert('Validation Error', 'Please enter a task title');
       return;
     }
-
     if (title.length > 100) {
       Alert.alert('Validation Error', 'Title must be 100 characters or less');
       return;
     }
-
     if (assigneeIds.length === 0) {
-      Alert.alert(
-        'Validation Error',
-        'Please select at least one worker to assign this task to',
-      );
+      Alert.alert('Validation Error', 'Please select at least one worker to assign this task to');
       return;
     }
-
     if (instructions.length > 500) {
-      Alert.alert(
-        'Validation Error',
+      Alert.alert('Validation Error',
         'Instructions must be 500 characters or less',
       );
       return;
     }
 
     setIsSubmitting(true);
-
-    try {
-      await createTask({
-        description: title.trim(),
-        assignedBy: 'Foreman',
-        isDone: false,
-        category,
-        priority,
-        dueDate: formatDate(dueDate),
-        assignedTo: assigneeIds,
-        assignedToNames: assigneeIds.map(
-          id => getWorkerById(id)?.name || 'Unknown',
-        ),
-        instructions: instructions.trim() || undefined,
-        photos: [],
-      });
-
-      Alert.alert(
-        'Success',
-        `Task assigned to ${assigneeIds.length} worker(s)`,
-        [
-          {
-            text: 'View Workers',
-            onPress: () => navigation.navigate('WorkerListScreen'),
-          },
-          {
-            text: 'Done',
-            onPress: () => navigation.goBack(),
-          },
-        ],
-      );
-    } catch (error) {
-      Alert.alert('Error', 'Failed to create task. Please try again.');
+    // Task creation requires a database table — coming soon
+    setTimeout(() => {
       setIsSubmitting(false);
-    }
+      Alert.alert('Coming Soon', 'Task assignment will be available once the tasks table is added.', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+    }, 300);
   };
 
   const toggleAssignee = (workerId: string) => {
@@ -305,7 +269,7 @@ const CreateTaskScreen: React.FC = () => {
                         {worker.name}
                       </Text>
                       <Text style={styles.assigneeOptionDetail}>
-                        {worker.role} • {worker.section}
+                        {worker.role} • {worker.section_id ?? 'N/A'}
                       </Text>
                     </View>
                   </View>

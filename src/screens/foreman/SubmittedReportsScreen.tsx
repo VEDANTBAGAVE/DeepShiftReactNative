@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -6,81 +6,109 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ScrollView,
+  RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
+import { shiftService } from '../../services/shiftService';
+import { userService } from '../../services/userService';
+import { useAuth } from '../../context/AuthContext';
+import { Shift, User, Section } from '../../types/database';
 
+type DisplayReportStatus = 'pending' | 'approved' | 'reopened';
+
+interface DisplayReport {
+  id: string;
+  date: string;
+  shift: string;
+  section: string;
+  status: DisplayReportStatus;
+  submittedBy: string;
+  submittedAt: string;
+  overmanComments: string | null;
+  summary: null;
+}
 type SubmittedReportsScreenNavigationProp =
   StackNavigationProp<RootStackParamList>;
 
-// Sample reports data for UI/UX preview
-const SAMPLE_REPORTS = [
-  {
-    id: 'RPT-2025-0426',
-    date: '2025-10-26',
-    shift: 'Morning Shift',
-    section: 'Panel 5-A',
-    status: 'pending',
-    submittedBy: 'Foreman Rajesh Kumar',
-    submittedAt: '2025-10-26T10:30:00',
-    overmanComments: null,
-    summary: {
-      crewPresent: 7,
-      crewAbsent: 1,
-      equipmentOperational: 5,
-      equipmentDown: 1,
-      safetyIssues: 0,
-      productionTarget: 50,
-      productionActual: 45,
-    },
-  },
-  {
-    id: 'RPT-2025-0425',
-    date: '2025-10-25',
-    shift: 'Evening Shift',
-    section: 'Panel 5-A',
-    status: 'reopened',
-    submittedBy: 'Foreman Amit Singh',
-    submittedAt: '2025-10-25T18:45:00',
-    overmanComments:
-      'Need clarification on equipment downtime. Please provide more details.',
-    summary: {
-      crewPresent: 8,
-      crewAbsent: 0,
-      equipmentOperational: 6,
-      equipmentDown: 0,
-      safetyIssues: 1,
-      productionTarget: 48,
-      productionActual: 52,
-    },
-  },
-  {
-    id: 'RPT-2025-0424',
-    date: '2025-10-24',
-    shift: 'Morning Shift',
-    section: 'Panel 5-A',
-    status: 'approved',
-    submittedBy: 'Foreman Rajesh Kumar',
-    submittedAt: '2025-10-24T11:00:00',
-    overmanComments: 'Excellent work. All safety protocols followed.',
-    summary: {
-      crewPresent: 8,
-      crewAbsent: 0,
-      equipmentOperational: 6,
-      equipmentDown: 0,
-      safetyIssues: 0,
-      productionTarget: 50,
-      productionActual: 48,
-    },
-  },
-];
+const mapShiftStatus = (status: string): DisplayReportStatus => {
+  switch (status) {
+    case 'submitted':
+      return 'pending';
+    case 'approved':
+    case 'archived':
+      return 'approved';
+    default:
+      return 'pending';
+  }
+};
 
 const SubmittedReportsScreen: React.FC = () => {
   const navigation = useNavigation<SubmittedReportsScreenNavigationProp>();
+  const { user } = useAuth();
   const [filter, setFilter] = useState<
     'all' | 'pending' | 'approved' | 'reopened'
   >('all');
+  const [isLoading, setIsLoading] = useState(false);
+  const [rawShifts, setRawShifts] = useState<Shift[]>([]);
+  const [sections, setSections] = useState<Section[]>([]);
+  const [overmen, setOvermen] = useState<User[]>([]);
+
+  const loadData = useCallback(async () => {
+    if (!user?.section_id) return;
+    setIsLoading(true);
+    try {
+      const [fetchedShifts, fetchedSections, fetchedOvermen] =
+        await Promise.all([
+          shiftService.getShifts({ section_id: user.section_id }),
+          userService.getSections(),
+          userService.getOvermen(),
+        ]);
+      setRawShifts(fetchedShifts.filter(s => s.status !== 'draft'));
+      setSections(fetchedSections);
+      setOvermen(fetchedOvermen);
+    } catch (error) {
+      console.error('Failed to load reports:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const sectionMap = useMemo(
+    () => Object.fromEntries(sections.map(s => [s.id, s.section_name])),
+    [sections],
+  );
+
+  const overmanMap = useMemo(
+    () => Object.fromEntries(overmen.map(o => [o.id, o.name])),
+    [overmen],
+  );
+
+  const reports: DisplayReport[] = useMemo(
+    () =>
+      rawShifts.map(shift => ({
+        id: `RPT-${shift.id.slice(-8).toUpperCase()}`,
+        date: shift.shift_date,
+        shift:
+          shift.shift_type.charAt(0).toUpperCase() +
+          shift.shift_type.slice(1) +
+          ' Shift',
+        section: sectionMap[shift.section_id] ?? 'Section',
+        status: mapShiftStatus(shift.status),
+        submittedBy: overmanMap[shift.overman_id]
+          ? `Overman ${overmanMap[shift.overman_id]}`
+          : 'Overman',
+        submittedAt: shift.submitted_at ?? shift.created_at,
+        overmanComments: shift.handover_notes,
+        summary: null,
+      })),
+    [rawShifts, sectionMap, overmanMap],
+  );
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -125,20 +153,14 @@ const SubmittedReportsScreen: React.FC = () => {
     });
   };
 
-  const filteredReports = SAMPLE_REPORTS.filter(report => {
+  const filteredReports = reports.filter(report => {
     if (filter === 'all') return true;
     return report.status === filter;
   });
 
-  const pendingCount = SAMPLE_REPORTS.filter(
-    r => r.status === 'pending',
-  ).length;
-  const approvedCount = SAMPLE_REPORTS.filter(
-    r => r.status === 'approved',
-  ).length;
-  const reopenedCount = SAMPLE_REPORTS.filter(
-    r => r.status === 'reopened',
-  ).length;
+  const pendingCount = reports.filter(r => r.status === 'pending').length;
+  const approvedCount = reports.filter(r => r.status === 'approved').length;
+  const reopenedCount = reports.filter(r => r.status === 'reopened').length;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -157,7 +179,7 @@ const SubmittedReportsScreen: React.FC = () => {
       {/* Stats Bar */}
       <View style={styles.statsBar}>
         <View style={styles.statBox}>
-          <Text style={styles.statNumber}>{SAMPLE_REPORTS.length}</Text>
+          <Text style={styles.statNumber}>{reports.length}</Text>
           <Text style={styles.statLabel}>Total</Text>
         </View>
         <View style={[styles.statBox, styles.statBoxBorder]}>
@@ -245,14 +267,18 @@ const SubmittedReportsScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollView}>
-        {/* Preview Notice */}
-        <View style={styles.previewNotice}>
-          <Text style={styles.previewIcon}>�️</Text>
-          <Text style={styles.previewText}>
-            UI Preview: Sample report data shown for design purposes
-          </Text>
-        </View>
+      <ScrollView
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl refreshing={isLoading} onRefresh={loadData} />
+        }
+      >
+        {reports.length === 0 && !isLoading && (
+          <View style={styles.previewNotice}>
+            <Text style={styles.previewIcon}>📋</Text>
+            <Text style={styles.previewText}>No submitted reports found for this section</Text>
+          </View>
+        )}
 
         {/* Reports List */}
         {filteredReports.map(report => (
@@ -307,55 +333,6 @@ const SubmittedReportsScreen: React.FC = () => {
               <View style={styles.sectionRow}>
                 <Text style={styles.sectionIcon}>🏗️</Text>
                 <Text style={styles.sectionText}>{report.section}</Text>
-              </View>
-
-              {/* Summary Stats */}
-              <View style={styles.summaryContainer}>
-                <Text style={styles.summaryTitle}>Report Summary</Text>
-                <View style={styles.summaryGrid}>
-                  <View style={styles.summaryItem}>
-                    <Text style={styles.summaryLabel}>Crew</Text>
-                    <Text style={styles.summaryValue}>
-                      {report.summary.crewPresent}/
-                      {report.summary.crewPresent + report.summary.crewAbsent}
-                    </Text>
-                  </View>
-                  <View style={styles.summaryItem}>
-                    <Text style={styles.summaryLabel}>Equipment</Text>
-                    <Text style={styles.summaryValue}>
-                      {report.summary.equipmentOperational}/
-                      {report.summary.equipmentOperational +
-                        report.summary.equipmentDown}
-                    </Text>
-                  </View>
-                  <View style={styles.summaryItem}>
-                    <Text style={styles.summaryLabel}>Production</Text>
-                    <Text style={styles.summaryValue}>
-                      {report.summary.productionActual}/
-                      {report.summary.productionTarget} tons
-                    </Text>
-                  </View>
-                  <View style={styles.summaryItem}>
-                    <Text style={styles.summaryLabel}>Safety</Text>
-                    <Text
-                      style={[
-                        styles.summaryValue,
-                        {
-                          color:
-                            report.summary.safetyIssues > 0
-                              ? '#ef4444'
-                              : '#10b981',
-                        },
-                      ]}
-                    >
-                      {report.summary.safetyIssues === 0
-                        ? '✓ OK'
-                        : `${report.summary.safetyIssues} Issue${
-                            report.summary.safetyIssues > 1 ? 's' : ''
-                          }`}
-                    </Text>
-                  </View>
-                </View>
               </View>
 
               {/* Overman Comments */}

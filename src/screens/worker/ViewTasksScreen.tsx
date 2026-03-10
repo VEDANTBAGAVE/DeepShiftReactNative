@@ -10,19 +10,12 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
-import { useWorker } from '../../context/WorkerContext';
-
 type ViewTasksNavigationProp = StackNavigationProp<RootStackParamList>;
 
 const ViewTasksScreen: React.FC = () => {
   const navigation = useNavigation<ViewTasksNavigationProp>();
-  const { getTodayTasks, updateTask } = useWorker();
 
-  const todayTasks = getTodayTasks();
-
-  const handleToggleTask = async (id: string, isDone: boolean) => {
-    await updateTask(id, { isDone: !isDone, doneNote: 'Completed' });
-  };
+  const todayTasks: never[] = [];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -41,50 +34,13 @@ const ViewTasksScreen: React.FC = () => {
       </View>
 
       <ScrollView style={styles.scrollView}>
-        {todayTasks.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>📋</Text>
-            <Text style={styles.emptyTitle}>No Tasks Today</Text>
-            <Text style={styles.emptyText}>
-              Your foreman hasn't assigned any tasks yet
-            </Text>
-          </View>
-        ) : (
-          todayTasks.map(task => (
-            <View key={task.id} style={styles.taskCard}>
-              <TouchableOpacity
-                style={styles.taskCheckbox}
-                onPress={() => handleToggleTask(task.id, task.isDone)}
-              >
-                <View
-                  style={[
-                    styles.checkbox,
-                    task.isDone && styles.checkboxChecked,
-                  ]}
-                >
-                  {task.isDone && <Text style={styles.checkmark}>✓</Text>}
-                </View>
-              </TouchableOpacity>
-
-              <View style={styles.taskContent}>
-                <Text
-                  style={[
-                    styles.taskDescription,
-                    task.isDone && styles.taskDescriptionDone,
-                  ]}
-                >
-                  {task.description}
-                </Text>
-                <Text style={styles.taskAssignedBy}>
-                  Assigned by: {task.assignedBy}
-                </Text>
-                {task.doneNote && (
-                  <Text style={styles.taskNote}>Note: {task.doneNote}</Text>
-                )}
-              </View>
-            </View>
-          ))
-        )}
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyIcon}>📋</Text>
+          <Text style={styles.emptyTitle}>No Tasks Today</Text>
+          <Text style={styles.emptyText}>
+            Your foreman hasn't assigned any tasks yet
+          </Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

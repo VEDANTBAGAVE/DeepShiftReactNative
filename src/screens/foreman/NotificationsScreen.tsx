@@ -10,21 +10,13 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
-import { useForeman } from '../../context/ForemanContext';
-
 type NotificationsScreenNavigationProp =
   StackNavigationProp<RootStackParamList>;
 
 const NotificationsScreen: React.FC = () => {
   const navigation = useNavigation<NotificationsScreenNavigationProp>();
-  const { getUnreadNotificationsCount, markAllNotificationsRead } =
-    useForeman();
 
-  const unreadCount = getUnreadNotificationsCount();
-
-  const handleMarkAllRead = () => {
-    markAllNotificationsRead();
-  };
+  const unreadCount = 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -38,10 +30,7 @@ const NotificationsScreen: React.FC = () => {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
         {unreadCount > 0 && (
-          <TouchableOpacity
-            style={styles.markAllButton}
-            onPress={handleMarkAllRead}
-          >
+          <TouchableOpacity style={styles.markAllButton}>
             <Text style={styles.markAllButtonText}>Mark All Read</Text>
           </TouchableOpacity>
         )}

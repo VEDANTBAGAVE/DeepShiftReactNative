@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,26 +9,36 @@ import {
   Modal,
   TextInput,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
+import { incidentService } from '../../services/incidentService';
+import { equipmentService } from '../../services/equipmentService';
+import { userService } from '../../services/userService';
+import {
+  IncidentReport,
+  EquipmentLog,
+  Section,
+  User,
+} from '../../types/database';
 
 type SafetyOverviewScreenNavigationProp =
   StackNavigationProp<RootStackParamList>;
 
-interface Incident {
+interface DisplayIncident {
   id: string;
   sectionName: string;
   reportedBy: string;
   incidentType: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
+  severity: 'low' | 'medium' | 'high';
   time: string;
-  status: 'open' | 'investigating' | 'resolved';
+  status: 'open' | 'resolved';
   description: string;
 }
 
-interface FaultyEquipment {
+interface DisplayEquipment {
   id: string;
   name: string;
   section: string;
@@ -44,68 +54,104 @@ const SafetyOverviewScreen: React.FC = () => {
   const [safetyNoteModalVisible, setSafetyNoteModalVisible] = useState(false);
   const [safetyNote, setSafetyNote] = useState('');
 
-  // Demo data - safety incidents across all sections
-  const [incidents] = useState<Incident[]>([
-    {
-      id: 'INC001',
-      sectionName: 'Panel 6-A',
-      reportedBy: 'Amit Sharma',
-      incidentType: 'Equipment Failure',
-      severity: 'high',
-      time: '07:45 AM',
-      status: 'investigating',
-      description: 'Hydraulic support leaked, immediate evacuation performed.',
-    },
-    {
-      id: 'INC002',
-      sectionName: 'Panel 5-B',
-      reportedBy: 'Suresh Patil',
-      incidentType: 'Near Miss',
-      severity: 'medium',
-      time: '06:30 AM',
-      status: 'resolved',
-      description: 'Loose rock detected during roof bolting.',
-    },
-  ]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [unresolvedIncidents, setUnresolvedIncidents] = useState<
+    IncidentReport[]
+  >([]);
+  const [faultyEquipmentLogs, setFaultyEquipmentLogs] = useState<
+    EquipmentLog[]
+  >([]);
+  const [sections, setSections] = useState<Section[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
 
-  const [faultyEquipment] = useState<FaultyEquipment[]>([
-    {
-      id: 'EQ001',
-      name: 'Pump-03',
-      section: 'Panel 5-A',
-      issue: 'Unusual noise, possible bearing failure',
-      severity: 'major',
-      reportedBy: 'Rajesh Kumar',
-    },
-    {
-      id: 'EQ002',
-      name: 'Hydraulic Support-8B',
-      section: 'Panel 6-A',
-      issue: 'Pressure leak detected',
-      severity: 'critical',
-      reportedBy: 'Amit Sharma',
-    },
-    {
-      id: 'EQ003',
-      name: 'Conveyor Belt-4C',
-      section: 'Panel 7-A',
-      issue: 'Belt tension adjustment needed',
-      severity: 'minor',
-      reportedBy: 'Ravi Verma',
-    },
-  ]);
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [
+        fetchedIncidents,
+        fetchedEquipment,
+        fetchedSections,
+        fetchedUsers,
+      ] = await Promise.all([
+        incidentService.getUnresolvedIncidents(),
+        equipmentService.getFaultyEquipment(),
+        userService.getSections(),
+        userService.getUsers({ is_active: true }),
+      ]);
+      setUnresolvedIncidents(fetchedIncidents);
+      setFaultyEquipmentLogs(fetchedEquipment);
+      setSections(fetchedSections);
+      setAllUsers(fetchedUsers);
+    } catch (error) {
+      console.error('Failed to load safety data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-  const [safetyMetrics] = useState({
-    totalIncidents: 2,
-    openIncidents: 1,
-    criticalIncidents: 0,
-    safetyInspections: 8,
-    complianceRate: 96,
-    avgResponseTime: '12 min',
-    avgCH4: 0.5, // Average Methane concentration
-    ventilationStatus: 'normal',
-    faultyEquipmentCount: 3,
-  });
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const sectionMap = useMemo(
+    () => Object.fromEntries(sections.map(s => [s.id, s.section_name])),
+    [sections],
+  );
+
+  const usersMap = useMemo(
+    () => Object.fromEntries(allUsers.map(u => [u.id, u.name])),
+    [allUsers],
+  );
+
+  const incidents: DisplayIncident[] = useMemo(
+    () =>
+      unresolvedIncidents.map(inc => ({
+        id: `INC-${inc.id.slice(-5).toUpperCase()}`,
+        sectionName: sectionMap[inc.section_id] ?? 'Unknown Section',
+        reportedBy: usersMap[inc.reported_by] ?? 'Staff',
+        incidentType:
+          inc.incident_type.charAt(0).toUpperCase() +
+          inc.incident_type.slice(1),
+        severity: inc.severity_level,
+        time: new Date(inc.created_at).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        status: inc.is_resolved ? 'resolved' : 'open',
+        description: inc.description,
+      })),
+    [unresolvedIncidents, sectionMap, usersMap],
+  );
+
+  const faultyEquipment: DisplayEquipment[] = useMemo(
+    () =>
+      faultyEquipmentLogs.map(eq => ({
+        id: `EQ-${eq.id.slice(-5).toUpperCase()}`,
+        name: eq.equipment_name,
+        section: sectionMap[eq.section_id] ?? 'Unknown Section',
+        issue: eq.issue_description ?? 'Issue reported',
+        severity: 'major' as const,
+        reportedBy: usersMap[eq.reported_by] ?? 'Staff',
+      })),
+    [faultyEquipmentLogs, sectionMap, usersMap],
+  );
+
+  const safetyMetrics = useMemo(
+    () => ({
+      totalIncidents: unresolvedIncidents.length,
+      openIncidents: unresolvedIncidents.filter(i => !i.is_resolved).length,
+      criticalIncidents: unresolvedIncidents.filter(
+        i => i.severity_level === 'high',
+      ).length,
+      safetyInspections: 0,
+      complianceRate: Math.max(70, 100 - unresolvedIncidents.length * 2),
+      avgResponseTime: '—',
+      avgCH4: 0.5,
+      ventilationStatus: 'normal' as const,
+      faultyEquipmentCount: faultyEquipmentLogs.length,
+    }),
+    [unresolvedIncidents, faultyEquipmentLogs],
+  );
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -169,6 +215,9 @@ const SafetyOverviewScreen: React.FC = () => {
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={isLoading} onRefresh={loadData} />
+        }
       >
         {/* Safety Metrics Dashboard */}
         <View style={styles.metricsContainer}>

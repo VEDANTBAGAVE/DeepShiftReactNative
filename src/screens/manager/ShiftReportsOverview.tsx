@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -7,10 +7,12 @@ import {
   SafeAreaView,
   ScrollView,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
+import { useManagerDashboard } from '../../hooks/useDashboard';
 
 type ShiftReportsOverviewNavigationProp =
   StackNavigationProp<RootStackParamList>;
@@ -18,12 +20,12 @@ type ShiftReportsOverviewNavigationProp =
 interface ShiftReport {
   id: string;
   date: string;
-  shiftType: 'Morning' | 'Evening' | 'Night';
+  shiftType: string;
   overmanName: string;
   totalWorkers: number;
   presentWorkers: number;
   incidents: number;
-  status: 'Submitted' | 'Under Review' | 'Approved' | 'Flagged';
+  status: string;
   submittedAt: string;
   safetyScore: number;
   productionRate: number;
@@ -31,127 +33,47 @@ interface ShiftReport {
 
 const ShiftReportsOverview: React.FC = () => {
   const navigation = useNavigation<ShiftReportsOverviewNavigationProp>();
+  const { allShifts, incidentSummary, overallStats, isLoading } = useManagerDashboard();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<string>('All');
 
-  // Demo data for shift reports
-  const [reports] = useState<ShiftReport[]>([
-    {
-      id: 'SR-001',
-      date: '25 Oct',
-      shiftType: 'Morning',
-      overmanName: 'Patil',
-      totalWorkers: 26,
-      presentWorkers: 24,
-      incidents: 2,
-      status: 'Submitted',
-      submittedAt: '14:05',
-      safetyScore: 92,
-      productionRate: 98,
-    },
-    {
-      id: 'SR-002',
-      date: '25 Oct',
-      shiftType: 'Evening',
-      overmanName: 'Sharma',
-      totalWorkers: 28,
-      presentWorkers: 28,
-      incidents: 0,
-      status: 'Under Review',
-      submittedAt: '22:10',
-      safetyScore: 100,
-      productionRate: 105,
-    },
-    {
-      id: 'SR-003',
-      date: '26 Oct',
-      shiftType: 'Night',
-      overmanName: 'Kumar',
-      totalWorkers: 24,
-      presentWorkers: 22,
-      incidents: 1,
-      status: 'Submitted',
-      submittedAt: '06:15',
-      safetyScore: 95,
-      productionRate: 88,
-    },
-    {
-      id: 'SR-004',
-      date: '26 Oct',
-      shiftType: 'Morning',
-      overmanName: 'Singh',
-      totalWorkers: 30,
-      presentWorkers: 30,
-      incidents: 0,
-      status: 'Approved',
-      submittedAt: '14:00',
-      safetyScore: 98,
-      productionRate: 102,
-    },
-    {
-      id: 'SR-005',
-      date: '26 Oct',
-      shiftType: 'Evening',
-      overmanName: 'Patil',
-      totalWorkers: 26,
-      presentWorkers: 25,
-      incidents: 3,
-      status: 'Flagged',
-      submittedAt: '22:20',
-      safetyScore: 85,
-      productionRate: 90,
-    },
-    {
-      id: 'SR-006',
-      date: '27 Oct',
-      shiftType: 'Night',
-      overmanName: 'Sharma',
-      totalWorkers: 28,
-      presentWorkers: 27,
-      incidents: 0,
-      status: 'Approved',
-      submittedAt: '06:05',
-      safetyScore: 100,
-      productionRate: 110,
-    },
-    {
-      id: 'SR-007',
-      date: '27 Oct',
-      shiftType: 'Morning',
-      overmanName: 'Kumar',
-      totalWorkers: 32,
-      presentWorkers: 30,
-      incidents: 1,
-      status: 'Under Review',
-      submittedAt: '13:50',
-      safetyScore: 94,
+  const reports = useMemo<ShiftReport[]>(() =>
+    allShifts.map(s => ({
+      id: s.id,
+      date: new Date(s.shift_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+      shiftType: s.shift_type.charAt(0).toUpperCase() + s.shift_type.slice(1),
+      overmanName: s.overman_id ?? '—',
+      totalWorkers: overallStats.totalWorkers,
+      presentWorkers: overallStats.workersPresent,
+      incidents: Array.isArray(incidentSummary) ? incidentSummary.length : 0,
+      status: s.status === 'submitted' ? 'Submitted'
+            : s.status === 'approved' ? 'Approved'
+            : s.status === 'draft' ? 'Under Review'
+            : s.status,
+      submittedAt: s.submitted_at
+        ? new Date(s.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : '—',
+      safetyScore: 90,
       productionRate: 95,
-    },
-  ]);
-
+    })),
+  [allShifts, incidentSummary, overallStats]);
   const filters = ['All', 'Submitted', 'Under Review', 'Approved', 'Flagged'];
 
-  const getStatusColor = (status: ShiftReport['status']) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
-      case 'Approved':
-        return '#10b981';
-      case 'Under Review':
-        return '#3b82f6';
-      case 'Flagged':
-        return '#ef4444';
-      default:
-        return '#f59e0b';
+      case 'Approved':    return '#10b981';
+      case 'Under Review': return '#3b82f6';
+      case 'Flagged':     return '#ef4444';
+      default:            return '#f59e0b';
     }
   };
 
-  const getShiftIcon = (shiftType: ShiftReport['shiftType']) => {
+  const getShiftIcon = (shiftType: string) => {
     switch (shiftType) {
-      case 'Morning':
-        return '🌅';
-      case 'Evening':
-        return '🌆';
-      case 'Night':
-        return '🌙';
+      case 'Morning': return '🌅';
+      case 'Evening': return '🌆';
+      case 'Night':   return '🌙';
+      default:        return '🕒';
     }
   };
 

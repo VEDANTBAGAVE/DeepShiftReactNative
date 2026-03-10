@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -8,164 +8,105 @@ import {
   ScrollView,
   Modal,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
+import { shiftService } from '../../services/shiftService';
+import { ShiftWithRelations } from '../../types/database';
+import { useManagerDashboard } from '../../hooks/useDashboard';
 
 type ShiftLogDetailNavigationProp = StackNavigationProp<RootStackParamList>;
 type ShiftLogDetailRouteProp = RouteProp<RootStackParamList, 'ShiftLogDetail'>;
 
-interface CrewAttendance {
-  totalWorkers: number;
-  present: number;
-  absent: number;
-  lateArrivals: number;
-}
-
-interface Equipment {
-  id: string;
-  name: string;
-  status: 'Functional' | 'Maintenance Required' | 'Faulty';
-  location: string;
-}
-
-interface SafetyReading {
-  ch4: string;
-  o2: string;
-  co: string;
-  ventilation: string;
-  temperature: string;
-}
-
-interface Incident {
-  type: string;
-  severity: 'Minor' | 'Major' | 'Critical';
-  description: string;
-  time: string;
-}
-
 const ShiftLogDetail: React.FC = () => {
   const navigation = useNavigation<ShiftLogDetailNavigationProp>();
   const route = useRoute<ShiftLogDetailRouteProp>();
+  const { reportId } = route.params || {};
+  const { approveShift } = useManagerDashboard();
 
+  const [shift, setShift] = useState<ShiftWithRelations | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isActing, setIsActing] = useState(false);
   const [approveModalVisible, setApproveModalVisible] = useState(false);
-  const [clarificationModalVisible, setClarificationModalVisible] =
-    useState(false);
+  const [clarificationModalVisible, setClarificationModalVisible] = useState(false);
   const [clarificationText, setClarificationText] = useState('');
 
+  useEffect(() => {
+    if (!reportId) { setIsLoading(false); return; }
+    shiftService.getShiftById(reportId)
+      .then(s => setShift(s))
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
+  }, [reportId]);
+
   // Demo data for shift log
-  const shiftLog = {
-    id: 'SR-001',
-    date: 'October 25, 2025',
-    dayOfWeek: 'Saturday',
-    shiftType: 'Morning Shift',
-    shiftTime: '06:00 AM - 02:00 PM',
-    area: 'Panel A-3',
-    overmanName: 'Rajesh Patil',
-    overmanId: 'OVM-105',
-    submittedAt: '14:05',
-    status: 'Submitted',
-
+  const shiftLog = shift ? {
+    id: shift.id.slice(0, 8).toUpperCase(),
+    date: new Date(shift.shift_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+    dayOfWeek: new Date(shift.shift_date).toLocaleDateString('en-US', { weekday: 'long' }),
+    shiftType: shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1) + ' Shift',
+    shiftTime: shift.shift_type === 'morning' ? '06:00 AM - 02:00 PM'
+             : shift.shift_type === 'evening' ? '02:00 PM - 10:00 PM'
+             : '10:00 PM - 06:00 AM',
+    area: shift.section?.section_name ?? 'N/A',
+    overmanName: shift.overman_id?.slice(0, 8) ?? 'N/A',
+    overmanId: shift.overman_id?.slice(0, 8).toUpperCase() ?? 'N/A',
+    submittedAt: shift.submitted_at
+      ? new Date(shift.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : 'Pending',
+    status: shift.status.charAt(0).toUpperCase() + shift.status.slice(1),
     crewAttendance: {
-      totalWorkers: 26,
-      present: 24,
-      absent: 2,
-      lateArrivals: 1,
-    } as CrewAttendance,
-
-    equipment: [
-      {
-        id: 'PUMP-03',
-        name: 'Water Pump 3',
-        status: 'Maintenance Required',
-        location: 'Section A',
-      },
-      {
-        id: 'DRILL-02',
-        name: 'Drill Machine 2',
-        status: 'Functional',
-        location: 'Section B',
-      },
-      {
-        id: 'VENT-01',
-        name: 'Ventilation Fan 1',
-        status: 'Functional',
-        location: 'Main Tunnel',
-      },
-      {
-        id: 'CONV-05',
-        name: 'Conveyor Belt 5',
-        status: 'Functional',
-        location: 'Section C',
-      },
-      {
-        id: 'DRILL-07',
-        name: 'Drill Machine 7',
-        status: 'Faulty',
-        location: 'Section A',
-      },
-    ] as Equipment[],
-
-    safetyReadings: {
-      ch4: '0.45%',
-      o2: '20.5%',
-      co: '15 ppm',
-      ventilation: 'OK',
-      temperature: '28°C',
-    } as SafetyReading,
-
-    incidents: [
-      {
-        type: 'Minor Injury',
-        severity: 'Minor',
-        description: 'Worker slipped near conveyor belt, minor bruise on arm',
-        time: '09:30 AM',
-      },
-      {
-        type: 'Equipment Malfunction',
-        severity: 'Major',
-        description:
-          'Pump-03 sudden pressure drop, stopped operation for inspection',
-        time: '11:15 AM',
-      },
-    ] as Incident[],
-
-    productionMetrics: {
-      targetTonnage: 450,
-      achievedTonnage: 441,
-      percentage: 98,
+      totalWorkers: shift.worker_logs?.length ?? 0,
+      present: shift.worker_logs?.filter(l => l.attendance_status === 'present').length ?? 0,
+      absent: shift.worker_logs?.filter(l => l.attendance_status === 'absent').length ?? 0,
+      lateArrivals: 0,
     },
+    equipment: (shift.equipment_logs ?? []).map(e => ({
+      id: e.equipment_code ?? e.id.slice(0, 6).toUpperCase(),
+      name: e.equipment_name,
+      status: (e.condition_status === 'ok' ? 'Functional' : 'Faulty') as 'Functional' | 'Maintenance Required' | 'Faulty',
+      location: 'Section',
+    })),
+    safetyReadings: {
+      ch4: 'N/A', o2: 'N/A', co: 'N/A', ventilation: 'OK', temperature: 'N/A',
+    },
+    incidents: (shift.incidents ?? []).map(i => ({
+      type: i.incident_type,
+      severity: (i.severity_level === 'high' ? 'Critical' : i.severity_level === 'medium' ? 'Major' : 'Minor') as 'Minor' | 'Major' | 'Critical',
+      description: i.description,
+      time: new Date(i.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    })),
+    productionMetrics: { targetTonnage: 450, achievedTonnage: 450, percentage: 100 },
+    overmanRemarks: shift.handover_notes ?? 'No remarks provided.',
+  } : null;
 
-    overmanRemarks:
-      'Shift completed with minor delays due to equipment maintenance. Pump-03 requires immediate attention. All safety protocols followed. Worker injury was treated on-site by medical team. Overall production target nearly met despite equipment downtime.',
-  };
-
-  const getEquipmentStatusColor = (status: Equipment['status']) => {
+  const getEquipmentStatusColor = (status: 'Functional' | 'Maintenance Required' | 'Faulty') => {
     switch (status) {
-      case 'Functional':
-        return '#10b981';
-      case 'Maintenance Required':
-        return '#f59e0b';
-      case 'Faulty':
-        return '#ef4444';
+      case 'Functional': return '#10b981';
+      case 'Maintenance Required': return '#f59e0b';
+      case 'Faulty': return '#ef4444';
     }
   };
 
-  const getIncidentSeverityColor = (severity: Incident['severity']) => {
+  const getIncidentSeverityColor = (severity: 'Minor' | 'Major' | 'Critical') => {
     switch (severity) {
-      case 'Minor':
-        return '#3b82f6';
-      case 'Major':
-        return '#f59e0b';
-      case 'Critical':
-        return '#ef4444';
+      case 'Minor': return '#3b82f6';
+      case 'Major': return '#f59e0b';
+      case 'Critical': return '#ef4444';
     }
   };
 
-  const handleApprove = () => {
-    setApproveModalVisible(true);
-    // TODO: API call to approve shift log
+  const handleApprove = async () => {
+    if (!shift) return;
+    setIsActing(true);
+    try {
+      await approveShift(shift.id);
+      setApproveModalVisible(true);
+    } finally {
+      setIsActing(false);
+    }
   };
 
   const handleRequestClarification = () => {
@@ -174,17 +115,50 @@ const ShiftLogDetail: React.FC = () => {
 
   const handleSendClarification = () => {
     if (clarificationText.trim()) {
-      console.log('Sending clarification:', clarificationText);
-      // TODO: API call to send clarification request
       setClarificationModalVisible(false);
       setClarificationText('');
-      // Show success message
     }
   };
 
   const handleBack = () => {
     navigation.goBack();
   };
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+            <Text style={styles.backButtonText}>←</Text>
+          </TouchableOpacity>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>Shift Log Detail</Text>
+          </View>
+          <View style={styles.backButton} />
+        </View>
+        <ActivityIndicator size="large" color="#1e3a5f" style={{ marginTop: 60 }} />
+      </SafeAreaView>
+    );
+  }
+
+  if (!shiftLog) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+            <Text style={styles.backButtonText}>←</Text>
+          </TouchableOpacity>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>Shift Log Detail</Text>
+          </View>
+          <View style={styles.backButton} />
+        </View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontSize: 16, color: '#64748b' }}>No shift log found</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>

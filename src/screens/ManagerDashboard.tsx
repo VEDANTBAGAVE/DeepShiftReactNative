@@ -11,6 +11,8 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
+import { useAuth } from '../context/AuthContext';
+import { useManagerDashboard } from '../hooks/useDashboard';
 
 const { width } = Dimensions.get('window');
 
@@ -133,32 +135,34 @@ const ActionCard: React.FC<ActionCardProps> = ({
 
 const ManagerDashboard: React.FC = () => {
   const navigation = useNavigation<ManagerDashboardNavigationProp>();
+  const { user, logout } = useAuth();
+  const { allShifts, pendingApprovals: pendingApprovalShifts, overallStats, isLoading } = useManagerDashboard();
 
-  // Demo data for current shift overview
-  const [shiftData] = useState({
-    currentShift: 'Morning Shift',
-    shiftTime: '06:00 AM - 02:00 PM',
-    date: 'October 27, 2025',
-    activeOvermen: 3,
-    totalWorkers: 156,
-    presentWorkers: 148,
-    absentWorkers: 8,
-    totalSections: 24,
-    operationalSections: 22,
-    safetyScore: 94,
-    productionRate: 102,
-    pendingApprovals: 5,
-    criticalIncidents: 2,
-    openIssues: 7,
-  });
+  // Real data from Supabase merged with display defaults
+  const shiftData = {
+    currentShift: 'Current Shift',
+    shiftTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+    activeOvermen: 0,
+    totalWorkers: overallStats.totalWorkers || 0,
+    presentWorkers: overallStats.workersPresent || 0,
+    absentWorkers: overallStats.workersAbsent || 0,
+    totalSections: 0,
+    operationalSections: 0,
+    safetyScore: 100,
+    productionRate: 100,
+    pendingApprovals: pendingApprovalShifts.length,
+    criticalIncidents: overallStats.highSeverityIncidents || 0,
+    openIssues: overallStats.pendingIncidents || 0,
+  };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logout();
     navigation.navigate('HomeScreen');
   };
 
   const handleProfile = () => {
     console.log('Opening Profile...');
-    // TODO: Navigate to profile
   };
 
   const handleShiftLogs = () => {

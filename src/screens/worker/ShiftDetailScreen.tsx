@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -6,12 +6,13 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ScrollView,
-  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
-import { useWorker } from '../../context/WorkerContext';
+import { shiftService } from '../../services/shiftService';
+import { ShiftWithRelations } from '../../types/database';
 
 type ShiftDetailNavigationProp = StackNavigationProp<
   RootStackParamList,
@@ -19,13 +20,36 @@ type ShiftDetailNavigationProp = StackNavigationProp<
 >;
 type ShiftDetailRouteProp = RouteProp<RootStackParamList, 'ShiftDetailScreen'>;
 
+const STATUS_BANNER_COLORS: Record<string, string> = {
+  draft: '#e2e8f0',
+  submitted: '#d1fae5',
+  approved: '#dbeafe',
+  archived: '#f1f5f9',
+  flagged: '#fef3c7',
+};
+
 const ShiftDetailScreen: React.FC = () => {
   const navigation = useNavigation<ShiftDetailNavigationProp>();
   const route = useRoute<ShiftDetailRouteProp>();
   const { shiftId } = route.params;
-  const { getShiftById, incidents } = useWorker();
 
-  const shift = getShiftById(shiftId);
+  const [shift, setShift] = useState<ShiftWithRelations | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    shiftService.getShiftById(shiftId)
+      .then(setShift)
+      .catch(console.error)
+      .finally(() => setIsLoading(false));
+  }, [shiftId]);
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ActivityIndicator size="large" color="#1e3a5f" style={{ marginTop: 80 }} />
+      </SafeAreaView>
+    );
+  }
 
   if (!shift) {
     return (
@@ -40,18 +64,9 @@ const ShiftDetailScreen: React.FC = () => {
     );
   }
 
-  const linkedIncidents = incidents.filter(i =>
-    shift.incidentIds.includes(i.id),
-  );
-
-  const formatTimestamp = (timestamp: number) => {
-    return new Date(timestamp).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const workerLogs = shift.worker_logs ?? [];
+  const equipmentLogs = shift.equipment_logs ?? [];
+  const incidents = shift.incidents ?? [];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -73,10 +88,7 @@ const ShiftDetailScreen: React.FC = () => {
         <View
           style={[
             styles.statusBanner,
-            shift.status === 'draft' && styles.statusDraft,
-            shift.status === 'submitted' && styles.statusSubmitted,
-            shift.status === 'reopened' && styles.statusReopened,
-            shift.status === 'acknowledged' && styles.statusAcknowledged,
+            { backgroundColor: STATUS_BANNER_COLORS[shift.status] ?? '#e2e8f0' },
           ]}
         >
           <Text style={styles.statusBannerText}>
@@ -84,147 +96,97 @@ const ShiftDetailScreen: React.FC = () => {
           </Text>
         </View>
 
-        {shift.reopenedReason && (
+        {shift.handover_notes ? (
           <View style={styles.reopenedAlert}>
-            <Text style={styles.reopenedIcon}>🔄</Text>
+            <Text style={styles.reopenedIcon}>📝</Text>
             <View style={styles.reopenedContent}>
-              <Text style={styles.reopenedTitle}>Reopened</Text>
-              <Text style={styles.reopenedReason}>{shift.reopenedReason}</Text>
+              <Text style={styles.reopenedTitle}>Handover Notes</Text>
+              <Text style={styles.reopenedReason}>{shift.handover_notes}</Text>
             </View>
           </View>
-        )}
+        ) : null}
 
         {/* Shift Details */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>📋 Shift Details</Text>
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Date:</Text>
-            <Text style={styles.detailValue}>{shift.date}</Text>
+            <Text style={styles.detailValue}>{shift.shift_date}</Text>
           </View>
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Shift:</Text>
-            <Text style={styles.detailValue}>
-              {shift.shiftType.toUpperCase()}
-            </Text>
+            <Text style={styles.detailValue}>{shift.shift_type.toUpperCase()}</Text>
           </View>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Area:</Text>
-            <Text style={styles.detailValue}>{shift.area}</Text>
+            <Text style={styles.detailLabel}>Status:</Text>
+            <Text style={styles.detailValue}>{shift.status}</Text>
           </View>
-          {shift.presenceConfirmed && (
-            <View style={styles.confirmedBadge}>
-              <Text style={styles.confirmedText}>
-                ✓ Presence confirmed at {formatTimestamp(shift.confirmedAt!)}
+          {shift.submitted_at && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Submitted:</Text>
+              <Text style={styles.detailValue}>
+                {new Date(shift.submitted_at).toLocaleString()}
               </Text>
             </View>
           )}
         </View>
+
+        {/* Worker Attendance */}
+        {workerLogs.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>👥 Worker Attendance ({workerLogs.length})</Text>
+            {workerLogs.map(log => (
+              <View key={log.id} style={styles.equipmentItem}>
+                <Text style={styles.equipmentName}>{log.worker_id}</Text>
+                <Text style={styles.equipmentCondition}>{log.attendance_status ?? 'unknown'}</Text>
+                {log.tasks_performed ? (
+                  <Text style={styles.equipmentNotes}>{log.tasks_performed}</Text>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* Equipment */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            ⚙️ Equipment ({shift.equipment.length})
-          </Text>
-          {shift.equipment.map((eq, index) => (
-            <View key={eq.id} style={styles.equipmentItem}>
-              <Text style={styles.equipmentName}>
-                {index + 1}. {eq.name}
-              </Text>
-              <Text style={styles.equipmentCondition}>{eq.condition}</Text>
-              {eq.notes && (
-                <Text style={styles.equipmentNotes}>{eq.notes}</Text>
-              )}
-              {eq.photos.length > 0 && (
-                <Text style={styles.equipmentPhotos}>
-                  📷 {eq.photos.length} photo(s)
-                </Text>
-              )}
-            </View>
-          ))}
-        </View>
-
-        {/* Safety */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>⚠️ Safety</Text>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Gas CH₄:</Text>
-            <Text style={styles.detailValue}>{shift.gasCH4}%</Text>
+        {equipmentLogs.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>⚙️ Equipment ({equipmentLogs.length})</Text>
+            {equipmentLogs.map(eq => (
+              <View key={eq.id} style={styles.equipmentItem}>
+                <Text style={styles.equipmentName}>{eq.equipment_name}</Text>
+                <Text style={styles.equipmentCondition}>{eq.condition_status}</Text>
+                {eq.issue_description ? (
+                  <Text style={styles.equipmentNotes}>{eq.issue_description}</Text>
+                ) : null}
+              </View>
+            ))}
           </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Ventilation:</Text>
-            <Text style={styles.detailValue}>
-              {shift.ventilationStatus.toUpperCase()}
-            </Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>PPE:</Text>
-            <Text style={styles.detailValue}>
-              {shift.ppeChecklist.join(', ')}
-            </Text>
-          </View>
-        </View>
-
-        {/* Work Summary */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📝 Work Summary</Text>
-          <Text style={styles.summaryText}>{shift.tasksDone}</Text>
-          {shift.productionPercent && (
-            <Text style={styles.productionText}>
-              Production: {shift.productionPercent}%
-            </Text>
-          )}
-          {shift.problemsFaced && (
-            <View style={styles.problemsBox}>
-              <Text style={styles.problemsTitle}>Problems:</Text>
-              <Text style={styles.problemsText}>{shift.problemsFaced}</Text>
-            </View>
-          )}
-        </View>
+        )}
 
         {/* Incidents */}
-        {linkedIncidents.length > 0 && (
+        {incidents.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              ⚠️ Linked Incidents ({linkedIncidents.length})
-            </Text>
-            {linkedIncidents.map(incident => (
+            <Text style={styles.sectionTitle}>⚠️ Incidents ({incidents.length})</Text>
+            {incidents.map(incident => (
               <View key={incident.id} style={styles.incidentItem}>
                 <View
                   style={[
                     styles.severityDot,
-                    incident.severity === 'low' && styles.severityLow,
-                    incident.severity === 'medium' && styles.severityMedium,
-                    incident.severity === 'high' && styles.severityHigh,
+                    incident.severity_level === 'low' && styles.severityLow,
+                    incident.severity_level === 'medium' && styles.severityMedium,
+                    incident.severity_level === 'high' && styles.severityHigh,
                   ]}
                 />
                 <View style={styles.incidentContent}>
-                  <Text style={styles.incidentDescription}>
-                    {incident.description}
-                  </Text>
+                  <Text style={styles.incidentDescription}>{incident.description}</Text>
                   <Text style={styles.incidentMeta}>
-                    {incident.severity.toUpperCase()} • {incident.area}
+                    {incident.severity_level?.toUpperCase()} • {incident.incident_type}
                   </Text>
                 </View>
               </View>
             ))}
           </View>
         )}
-
-        {/* Audit Log */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📜 Audit Trail</Text>
-          {shift.auditLog.map(entry => (
-            <View key={entry.id} style={styles.auditEntry}>
-              <View style={styles.auditDot} />
-              <View style={styles.auditContent}>
-                <Text style={styles.auditDescription}>{entry.description}</Text>
-                <Text style={styles.auditTime}>
-                  {formatTimestamp(entry.timestamp)}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
       </ScrollView>
     </SafeAreaView>
   );

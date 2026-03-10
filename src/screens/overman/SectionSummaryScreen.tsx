@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -7,15 +7,27 @@ import {
   SafeAreaView,
   ScrollView,
   TextInput,
+  RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
+import { shiftService } from '../../services/shiftService';
+import { userService } from '../../services/userService';
+import { incidentService } from '../../services/incidentService';
+import { useAuth } from '../../context/AuthContext';
+import {
+  Shift,
+  ShiftStatus,
+  User,
+  Section as DBSection,
+  IncidentReport,
+} from '../../types/database';
 
 type SectionSummaryScreenNavigationProp =
   StackNavigationProp<RootStackParamList>;
 
-interface Section {
+interface SectionDisplay {
   id: string;
   panelName: string;
   foremanName: string;
@@ -30,129 +42,111 @@ interface Section {
   productionStatus: 'on-track' | 'delayed' | 'ahead';
 }
 
+const mapShiftStatus = (
+  status?: ShiftStatus,
+): SectionDisplay['status'] => {
+  switch (status) {
+    case 'submitted':
+      return 'pending';
+    case 'approved':
+    case 'archived':
+      return 'approved';
+    default:
+      return 'pending';
+  }
+};
+
 const SectionSummaryScreen: React.FC = () => {
   const navigation = useNavigation<SectionSummaryScreenNavigationProp>();
+  const { user } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<
     'all' | 'pending' | 'approved' | 'reopened'
   >('all');
 
-  // Demo data - all mine sections under Overman supervision
-  const [sections] = useState<Section[]>([
-    {
-      id: 'SEC001',
-      panelName: 'Panel 1',
-      foremanName: 'Suresh Patil',
-      foremanId: 'FM001',
-      status: 'pending',
-      shiftType: 'Morning Shift',
-      crewCount: 8,
-      submittedAt: '08:15 AM',
-      lastUpdated: '08:15 AM',
-      safetyScore: 95,
-      hasIncidents: false,
-      productionStatus: 'on-track',
-    },
-    {
-      id: 'SEC002',
-      panelName: 'Panel 2',
-      foremanName: 'Rajesh Kumar',
-      foremanId: 'FM002',
-      status: 'approved',
-      shiftType: 'Morning Shift',
-      crewCount: 7,
-      submittedAt: '08:22 AM',
-      lastUpdated: '09:30 AM',
-      safetyScore: 98,
-      hasIncidents: false,
-      productionStatus: 'ahead',
-    },
-    {
-      id: 'SEC003',
-      panelName: 'Panel 3',
-      foremanName: 'Mohammed Khan',
-      foremanId: 'FM003',
-      status: 'reopened',
-      shiftType: 'Morning Shift',
-      crewCount: 6,
-      submittedAt: '08:45 AM',
-      lastUpdated: '10:15 AM',
-      safetyScore: 78,
-      hasIncidents: true,
-      productionStatus: 'delayed',
-    },
-    {
-      id: 'SEC004',
-      panelName: 'Panel 4',
-      foremanName: 'Vijay Singh',
-      foremanId: 'FM004',
-      status: 'approved',
-      shiftType: 'Morning Shift',
-      crewCount: 7,
-      submittedAt: '09:10 AM',
-      lastUpdated: '10:45 AM',
-      safetyScore: 92,
-      hasIncidents: false,
-      productionStatus: 'on-track',
-    },
-    {
-      id: 'SEC005',
-      panelName: 'Panel 5-A',
-      foremanName: 'Deepak Yadav',
-      foremanId: 'FM005',
-      status: 'pending',
-      shiftType: 'Morning Shift',
-      crewCount: 5,
-      submittedAt: '09:30 AM',
-      lastUpdated: '09:30 AM',
-      safetyScore: 90,
-      hasIncidents: false,
-      productionStatus: 'on-track',
-    },
-    {
-      id: 'SEC006',
-      panelName: 'Panel 5-B',
-      foremanName: 'Amit Sharma',
-      foremanId: 'FM006',
-      status: 'approved',
-      shiftType: 'Morning Shift',
-      crewCount: 8,
-      submittedAt: '08:50 AM',
-      lastUpdated: '10:20 AM',
-      safetyScore: 96,
-      hasIncidents: false,
-      productionStatus: 'on-track',
-    },
-    {
-      id: 'SEC007',
-      panelName: 'Panel 6-A',
-      foremanName: 'Anil Deshmukh',
-      foremanId: 'FM007',
-      status: 'pending',
-      shiftType: 'Morning Shift',
-      crewCount: 6,
-      submittedAt: '09:45 AM',
-      lastUpdated: '09:45 AM',
-      safetyScore: 88,
-      hasIncidents: false,
-      productionStatus: 'on-track',
-    },
-    {
-      id: 'SEC008',
-      panelName: 'Panel 7-A',
-      foremanName: 'Ravi Verma',
-      foremanId: 'FM008',
-      status: 'approved',
-      shiftType: 'Morning Shift',
-      crewCount: 7,
-      submittedAt: '08:30 AM',
-      lastUpdated: '09:50 AM',
-      safetyScore: 94,
-      hasIncidents: false,
-      productionStatus: 'on-track',
-    },
-  ]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [dbSections, setDbSections] = useState<DBSection[]>([]);
+  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [foremen, setForemen] = useState<User[]>([]);
+  const [unresolvedIncidents, setUnresolvedIncidents] = useState<
+    IncidentReport[]
+  >([]);
+
+  const loadData = useCallback(async () => {
+    if (!user) return;
+    setIsLoading(true);
+    try {
+      const [
+        fetchedSections,
+        fetchedShifts,
+        fetchedForemen,
+        fetchedIncidents,
+      ] = await Promise.all([
+        userService.getSections(),
+        shiftService.getShifts({ overman_id: user.id }),
+        userService.getUsers({ role: 'foreman', is_active: true }),
+        incidentService.getUnresolvedIncidents(),
+      ]);
+      setDbSections(fetchedSections);
+      setShifts(fetchedShifts);
+      setForemen(fetchedForemen);
+      setUnresolvedIncidents(fetchedIncidents);
+    } catch (error) {
+      console.error('Failed to load section summary data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const sections: SectionDisplay[] = useMemo(() => {
+    return dbSections.map(sec => {
+      const sectionShifts = shifts
+        .filter(s => s.section_id === sec.id)
+        .sort((a, b) => b.shift_date.localeCompare(a.shift_date));
+      const mostRecentShift = sectionShifts[0];
+      const foreman = foremen.find(f => f.section_id === sec.id);
+      const sectionIncidents = unresolvedIncidents.filter(
+        i => i.section_id === sec.id,
+      );
+      const shiftTypeLabel = mostRecentShift
+        ? mostRecentShift.shift_type.charAt(0).toUpperCase() +
+          mostRecentShift.shift_type.slice(1) +
+          ' Shift'
+        : 'No Shift';
+      const submittedAtLabel =
+        mostRecentShift?.submitted_at
+          ? new Date(mostRecentShift.submitted_at).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : '—';
+      const lastUpdatedLabel = mostRecentShift?.updated_at
+        ? new Date(mostRecentShift.updated_at).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '—';
+      return {
+        id: sec.id,
+        panelName: sec.section_name,
+        foremanName: foreman?.name ?? 'Unassigned',
+        foremanId: foreman?.id ?? '',
+        status: mapShiftStatus(mostRecentShift?.status),
+        shiftType: shiftTypeLabel,
+        crewCount: 0,
+        submittedAt: submittedAtLabel,
+        lastUpdated: lastUpdatedLabel,
+        safetyScore: Math.max(70, 100 - sectionIncidents.length * 5),
+        hasIncidents: sectionIncidents.length > 0,
+        productionStatus: 'on-track' as const,
+      };
+    });
+  }, [dbSections, shifts, foremen, unresolvedIncidents]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -350,6 +344,9 @@ const SectionSummaryScreen: React.FC = () => {
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={isLoading} onRefresh={loadData} />
+        }
       >
         {filteredSections.length === 0 ? (
           <View style={styles.emptyState}>

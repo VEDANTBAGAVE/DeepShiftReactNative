@@ -8,16 +8,23 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
+import { useAuth } from '../../context/AuthContext';
+import { shiftService } from '../../services/shiftService';
+import { useForemanDashboard } from '../../hooks/useDashboard';
 
 type SectionReportScreenNavigationProp =
   StackNavigationProp<RootStackParamList>;
 
 const SectionReportScreen: React.FC = () => {
   const navigation = useNavigation<SectionReportScreenNavigationProp>();
+  const { user } = useAuth();
+  const { currentShift } = useForemanDashboard();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
 
   // Form Data State
@@ -25,8 +32,8 @@ const SectionReportScreen: React.FC = () => {
     // Step 1: Report Details
     date: new Date().toISOString().split('T')[0],
     shift: 'Morning Shift',
-    section: 'Panel 5-A',
-    foremanName: 'Rajesh Kumar',
+    section: user?.section_id ?? '',
+    foremanName: user?.name ?? 'Foreman',
 
     // Step 2: Crew Summary
     crewPresent: '7',
@@ -77,7 +84,11 @@ const SectionReportScreen: React.FC = () => {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (!currentShift) {
+      Alert.alert('No Active Shift', 'There is no active shift to submit a report for.');
+      return;
+    }
     Alert.alert(
       'Submit Report',
       'Are you sure you want to submit this section report to the Overman?',
@@ -86,17 +97,37 @@ const SectionReportScreen: React.FC = () => {
         {
           text: 'Submit',
           style: 'default',
-          onPress: () => {
-            Alert.alert('Success', 'Section report submitted successfully!');
-            navigation.goBack();
+          onPress: async () => {
+            try {
+              setIsSubmitting(true);
+              await shiftService.updateShiftStatus(currentShift.id, 'submitted');
+              Alert.alert('Success', 'Section report submitted successfully!');
+              navigation.goBack();
+            } catch (err) {
+              Alert.alert('Error', 'Failed to submit report. Please try again.');
+            } finally {
+              setIsSubmitting(false);
+            }
           },
         },
       ],
     );
   };
 
-  const handleSaveDraft = () => {
-    Alert.alert('Draft Saved', 'Your report has been saved as a draft.');
+  const handleSaveDraft = async () => {
+    if (!currentShift) {
+      Alert.alert('No Active Shift', 'There is no active shift to save a draft for.');
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      await shiftService.updateHandoverNotes(currentShift.id, formData.progressRemarks || 'Draft saved');
+      Alert.alert('Draft Saved', 'Your report has been saved as a draft.');
+    } catch (err) {
+      Alert.alert('Error', 'Failed to save draft. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const renderStep1 = () => (

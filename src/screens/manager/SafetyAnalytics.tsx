@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -7,11 +7,14 @@ import {
   SafeAreaView,
   ScrollView,
   Dimensions,
+  RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
 import { LineChart, BarChart, PieChart } from 'react-native-gifted-charts';
+import { incidentService } from '../../services/incidentService';
+import { IncidentReport } from '../../types/database';
 
 type SafetyAnalyticsNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -20,117 +23,181 @@ const chartWidth = screenWidth - 48;
 
 const SafetyAnalytics: React.FC = () => {
   const navigation = useNavigation<SafetyAnalyticsNavigationProp>();
-  const [selectedFilter, setSelectedFilter] = useState<
-    'week' | 'month' | 'year'
-  >('week');
+  const [selectedFilter, setSelectedFilter] = useState<'week' | 'month' | 'year'>('week');
+  const [incidents, setIncidents] = useState<IncidentReport[]>([]);
+  const [unresolvedIncidents, setUnresolvedIncidents] = useState<IncidentReport[]>([]);
+  const [highSeverityCount, setHighSeverityCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Demo data for charts - Updated for react-native-gifted-charts
+  const startDate = useMemo(() => {
+    const d = new Date();
+    if (selectedFilter === 'week') d.setDate(d.getDate() - 7);
+    else if (selectedFilter === 'month') d.setMonth(d.getMonth() - 1);
+    else d.setFullYear(d.getFullYear() - 1);
+    return d.toISOString();
+  }, [selectedFilter]);
+
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [fetched, unresolved, highSev] = await Promise.all([
+        incidentService.getIncidents({ start_date: startDate }),
+        incidentService.getUnresolvedIncidents(),
+        incidentService.getHighSeverityCount(),
+      ]);
+      setIncidents(fetched);
+      setUnresolvedIncidents(unresolved);
+      setHighSeverityCount(highSev);
+    } catch (e) {
+      console.error('SafetyAnalytics: failed to load data', e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [startDate]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Gas levels — no sensor table in DB; keep representative demo values
   const gasLevelData = [
     { value: 0.42, label: 'Mon', dataPointText: '0.42%' },
     { value: 0.38, label: 'Tue', dataPointText: '0.38%' },
     { value: 0.45, label: 'Wed', dataPointText: '0.45%' },
-    { value: 0.5, label: 'Thu', dataPointText: '0.50%' },
+    { value: 0.5,  label: 'Thu', dataPointText: '0.50%' },
     { value: 0.48, label: 'Fri', dataPointText: '0.48%' },
     { value: 0.43, label: 'Sat', dataPointText: '0.43%' },
-    { value: 0.4, label: 'Sun', dataPointText: '0.40%' },
+    { value: 0.4,  label: 'Sun', dataPointText: '0.40%' },
   ];
 
-  const incidentData = [
-    { value: 2, label: 'Mon', frontColor: '#ef4444' },
-    { value: 1, label: 'Tue', frontColor: '#ef4444' },
-    { value: 3, label: 'Wed', frontColor: '#ef4444' },
-    { value: 0, label: 'Thu', frontColor: '#ef4444' },
-    { value: 2, label: 'Fri', frontColor: '#ef4444' },
-    { value: 1, label: 'Sat', frontColor: '#ef4444' },
-    { value: 0, label: 'Sun', frontColor: '#ef4444' },
-  ];
+  const incidentChartData = useMemo(() => {
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    if (selectedFilter === 'week') {
+      return Array.from({ length: 7 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (6 - i));
+        const dateStr = d.toISOString().split('T')[0];
+        const count = incidents.filter(inc => inc.created_at.startsWith(dateStr)).length;
+        return { value: count, label: dayNames[d.getDay()], frontColor: '#ef4444' };
+      });
+    } else if (selectedFilter === 'month') {
+      const weekLabels = ['Wk 1', 'Wk 2', 'Wk 3', 'Wk 4'];
+      return Array.from({ length: 4 }, (_, i) => {
+        const weekEnd = new Date();
+        weekEnd.setDate(weekEnd.getDate() - i * 7);
+        const weekStart = new Date(weekEnd);
+        weekStart.setDate(weekStart.getDate() - 7);
+        const count = incidents.filter(inc => {
+          const d = new Date(inc.created_at);
+          return d >= weekStart && d <= weekEnd;
+        }).length;
+        return { value: count, label: weekLabels[3 - i], frontColor: '#ef4444' };
+      });
+    } else {
+      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return Array.from({ length: 12 }, (_, i) => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - (11 - i));
+        const monthStr = d.toISOString().slice(0, 7);
+        const count = incidents.filter(inc => inc.created_at.startsWith(monthStr)).length;
+        return { value: count, label: monthNames[d.getMonth()], frontColor: '#ef4444' };
+      });
+    }
+  }, [incidents, selectedFilter]);
 
-  const hazardDistribution = [
-    {
-      value: 12,
-      color: '#3b82f6',
-      text: '12',
-      label: 'Minor',
-    },
-    {
-      value: 5,
-      color: '#f59e0b',
-      text: '5',
-      label: 'Major',
-    },
-    {
-      value: 2,
-      color: '#ef4444',
-      text: '2',
-      label: 'Critical',
-    },
-  ];
+  const barConfig = useMemo(() => {
+    const n = incidentChartData.length;
+    if (n <= 4) return { barWidth: 48, spacing: 32 };
+    if (n <= 7) return { barWidth: 32, spacing: 24 };
+    return { barWidth: 18, spacing: 10 };
+  }, [incidentChartData.length]);
 
-  const summaryCards = [
+  const totalChartIncidents = incidentChartData.reduce((s, d) => s + d.value, 0);
+  const avgPerPeriod = incidentChartData.length > 0
+    ? (totalChartIncidents / incidentChartData.length).toFixed(1)
+    : '0.0';
+  const maxBarValue = Math.max(4, ...incidentChartData.map(d => d.value));
+
+  const hazardDistribution = useMemo(() => {
+    const low    = incidents.filter(i => i.severity_level === 'low').length;
+    const medium = incidents.filter(i => i.severity_level === 'medium').length;
+    const high   = incidents.filter(i => i.severity_level === 'high').length;
+    if (low + medium + high === 0) {
+      return [{ value: 1, color: '#94a3b8', text: '0', label: 'No Data' }];
+    }
+    const items: { value: number; color: string; text: string; label: string }[] = [];
+    if (low    > 0) items.push({ value: low,    color: '#3b82f6', text: String(low),    label: 'Minor' });
+    if (medium > 0) items.push({ value: medium, color: '#f59e0b', text: String(medium), label: 'Major' });
+    if (high   > 0) items.push({ value: high,   color: '#ef4444', text: String(high),   label: 'Critical' });
+    return items;
+  }, [incidents]);
+
+  const totalHazards  = incidents.length;
+  const lowCount      = incidents.filter(i => i.severity_level === 'low').length;
+  const mediumCount   = incidents.filter(i => i.severity_level === 'medium').length;
+  const highCount     = incidents.filter(i => i.severity_level === 'high').length;
+  const lastCritical  = unresolvedIncidents.find(i => i.severity_level === 'high');
+  const lastCriticalDays = lastCritical
+    ? `${Math.floor((Date.now() - new Date(lastCritical.created_at).getTime()) / 86400000)} days ago`
+    : 'None active';
+
+  interface SummaryCardData {
+    icon: string;
+    title: string;
+    value: string;
+    status: 'normal' | 'warning' | 'critical';
+    trend: string;
+  }
+  const summaryCards: SummaryCardData[] = [
     {
       icon: '📊',
       title: 'Average Gas Level (CH₄)',
-      value: '0.5%',
-      status: 'normal' as const,
-      trend: '↓ 0.1%',
+      value: '0.44%',
+      status: 'normal',
+      trend: 'Demo (no sensor data)',
     },
     {
       icon: '⚠️',
       title: 'Total Active Incidents',
-      value: '4',
-      status: 'warning' as const,
-      trend: '↑ 2',
+      value: String(unresolvedIncidents.length),
+      status: unresolvedIncidents.length > 0 ? 'warning' : 'normal',
+      trend: unresolvedIncidents.length > 0 ? `${highSeverityCount} high severity` : 'All clear',
     },
     {
       icon: '🚨',
       title: 'Last Critical Alert',
-      value: '2 days ago',
-      status: 'normal' as const,
-      trend: 'Panel A-3',
+      value: lastCriticalDays,
+      status: lastCritical ? 'critical' : 'normal',
+      trend: lastCritical
+        ? lastCritical.title.length > 20 ? lastCritical.title.slice(0, 20) + '\u2026' : lastCritical.title
+        : 'No active critical',
     },
     {
       icon: '✓',
       title: 'Safety Compliance',
-      value: '96%',
-      status: 'normal' as const,
-      trend: '↑ 2%',
+      value: totalHazards === 0 ? '100%' : `${Math.max(0, Math.round(100 - (highCount / Math.max(1, totalHazards)) * 20))}%`,
+      status: 'normal',
+      trend: `${totalHazards} total in period`,
     },
   ];
 
+  const recentAlerts = unresolvedIncidents.slice(0, 3).map(inc => ({
+    color: inc.severity_level === 'high' ? '#ef4444' : inc.severity_level === 'medium' ? '#f59e0b' : '#3b82f6',
+    label: inc.severity_level === 'high' ? 'Critical' : inc.severity_level === 'medium' ? 'Warning' : 'Info',
+    title: inc.title,
+    details: `${Math.floor((Date.now() - new Date(inc.created_at).getTime()) / 86400000)} day(s) ago \u2022 Unresolved`,
+  }));
+
   const getStatusColor = (status: 'normal' | 'warning' | 'critical') => {
     switch (status) {
-      case 'normal':
-        return '#10b981';
-      case 'warning':
-        return '#f59e0b';
-      case 'critical':
-        return '#ef4444';
+      case 'normal':   return '#10b981';
+      case 'warning':  return '#f59e0b';
+      case 'critical': return '#ef4444';
     }
   };
 
   const handleBack = () => {
     navigation.goBack();
-  };
-
-  const chartConfig = {
-    backgroundColor: '#fff',
-    backgroundGradientFrom: '#fff',
-    backgroundGradientTo: '#fff',
-    decimalPlaces: 2,
-    color: (opacity = 1) => `rgba(30, 58, 95, ${opacity})`,
-    labelColor: (opacity = 1) => `rgba(100, 116, 139, ${opacity})`,
-    style: {
-      borderRadius: 16,
-    },
-    propsForDots: {
-      r: '5',
-      strokeWidth: '2',
-      stroke: '#1e3a5f',
-    },
-    propsForBackgroundLines: {
-      strokeDasharray: '',
-      stroke: '#e2e8f0',
-    },
   };
 
   return (
@@ -155,6 +222,7 @@ const SafetyAnalytics: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={loadData} />}
       >
         {/* Summary Cards */}
         <View style={styles.summaryGrid}>
@@ -283,11 +351,11 @@ const SafetyAnalytics: React.FC = () => {
           </Text>
           <View style={styles.chartContainer}>
             <BarChart
-              data={incidentData}
+              data={incidentChartData}
               height={220}
               width={chartWidth - 60}
-              barWidth={32}
-              spacing={24}
+              barWidth={barConfig.barWidth}
+              spacing={barConfig.spacing}
               initialSpacing={20}
               roundedTop
               roundedBottom
@@ -297,17 +365,17 @@ const SafetyAnalytics: React.FC = () => {
               yAxisTextStyle={{ color: '#64748b', fontSize: 11 }}
               xAxisLabelTextStyle={{ color: '#64748b', fontSize: 11 }}
               noOfSections={3}
-              maxValue={4}
+              maxValue={maxBarValue}
             />
           </View>
           <View style={styles.incidentSummary}>
             <View style={styles.incidentSummaryItem}>
               <Text style={styles.incidentSummaryLabel}>Total:</Text>
-              <Text style={styles.incidentSummaryValue}>9 incidents</Text>
+              <Text style={styles.incidentSummaryValue}>{totalChartIncidents} incidents</Text>
             </View>
             <View style={styles.incidentSummaryItem}>
               <Text style={styles.incidentSummaryLabel}>Average:</Text>
-              <Text style={styles.incidentSummaryValue}>1.3 per day</Text>
+              <Text style={styles.incidentSummaryValue}>{avgPerPeriod} per period</Text>
             </View>
           </View>
         </View>
@@ -327,14 +395,8 @@ const SafetyAnalytics: React.FC = () => {
               innerCircleColor="#fff"
               centerLabelComponent={() => (
                 <View style={{ alignItems: 'center' }}>
-                  <Text
-                    style={{
-                      fontSize: 24,
-                      fontWeight: 'bold',
-                      color: '#1e293b',
-                    }}
-                  >
-                    19
+                  <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#1e293b' }}>
+                    {totalHazards}
                   </Text>
                   <Text style={{ fontSize: 12, color: '#64748b' }}>Total</Text>
                 </View>
@@ -343,22 +405,22 @@ const SafetyAnalytics: React.FC = () => {
           </View>
           <View style={styles.hazardSummary}>
             <View style={styles.hazardItem}>
-              <View
-                style={[styles.hazardDot, { backgroundColor: '#3b82f6' }]}
-              />
-              <Text style={styles.hazardText}>Minor: 12 (63%)</Text>
+              <View style={[styles.hazardDot, { backgroundColor: '#3b82f6' }]} />
+              <Text style={styles.hazardText}>
+                Minor: {lowCount} ({totalHazards > 0 ? Math.round((lowCount / totalHazards) * 100) : 0}%)
+              </Text>
             </View>
             <View style={styles.hazardItem}>
-              <View
-                style={[styles.hazardDot, { backgroundColor: '#f59e0b' }]}
-              />
-              <Text style={styles.hazardText}>Major: 5 (26%)</Text>
+              <View style={[styles.hazardDot, { backgroundColor: '#f59e0b' }]} />
+              <Text style={styles.hazardText}>
+                Major: {mediumCount} ({totalHazards > 0 ? Math.round((mediumCount / totalHazards) * 100) : 0}%)
+              </Text>
             </View>
             <View style={styles.hazardItem}>
-              <View
-                style={[styles.hazardDot, { backgroundColor: '#ef4444' }]}
-              />
-              <Text style={styles.hazardText}>Critical: 2 (11%)</Text>
+              <View style={[styles.hazardDot, { backgroundColor: '#ef4444' }]} />
+              <Text style={styles.hazardText}>
+                Critical: {highCount} ({totalHazards > 0 ? Math.round((highCount / totalHazards) * 100) : 0}%)
+              </Text>
             </View>
           </View>
         </View>
@@ -398,43 +460,23 @@ const SafetyAnalytics: React.FC = () => {
         {/* Recent Alerts */}
         <View style={styles.alertsCard}>
           <Text style={styles.alertsTitle}>🔔 Recent Safety Alerts</Text>
-          <View style={styles.alertItem}>
-            <View style={[styles.alertBadge, { backgroundColor: '#ef4444' }]}>
-              <Text style={styles.alertBadgeText}>Critical</Text>
-            </View>
-            <View style={styles.alertContent}>
-              <Text style={styles.alertTitle}>
-                High CH₄ Concentration Detected
-              </Text>
-              <Text style={styles.alertDetails}>
-                Panel A-3 • 2 days ago • Resolved
-              </Text>
-            </View>
-          </View>
-          <View style={styles.alertItem}>
-            <View style={[styles.alertBadge, { backgroundColor: '#f59e0b' }]}>
-              <Text style={styles.alertBadgeText}>Warning</Text>
-            </View>
-            <View style={styles.alertContent}>
-              <Text style={styles.alertTitle}>
-                Ventilation System Fluctuation
-              </Text>
-              <Text style={styles.alertDetails}>
-                Panel B-1 • 4 days ago • Monitoring
-              </Text>
-            </View>
-          </View>
-          <View style={styles.alertItem}>
-            <View style={[styles.alertBadge, { backgroundColor: '#3b82f6' }]}>
-              <Text style={styles.alertBadgeText}>Info</Text>
-            </View>
-            <View style={styles.alertContent}>
-              <Text style={styles.alertTitle}>Scheduled Safety Inspection</Text>
-              <Text style={styles.alertDetails}>
-                All Panels • 6 days ago • Completed
-              </Text>
-            </View>
-          </View>
+          {recentAlerts.length === 0 ? (
+            <Text style={{ color: '#64748b', fontSize: 14, textAlign: 'center', paddingVertical: 12 }}>
+              No active safety alerts
+            </Text>
+          ) : (
+            recentAlerts.map((alert, idx) => (
+              <View key={idx} style={styles.alertItem}>
+                <View style={[styles.alertBadge, { backgroundColor: alert.color }]}>
+                  <Text style={styles.alertBadgeText}>{alert.label}</Text>
+                </View>
+                <View style={styles.alertContent}>
+                  <Text style={styles.alertTitle}>{alert.title}</Text>
+                  <Text style={styles.alertDetails}>{alert.details}</Text>
+                </View>
+              </View>
+            ))
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>

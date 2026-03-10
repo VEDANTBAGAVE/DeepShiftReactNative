@@ -1,7 +1,9 @@
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useEffect } from 'react';
+import { View, ActivityIndicator, Text } from 'react-native';
+import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { RootStackParamList } from './types';
+import { useAuth } from '../context/AuthContext';
 
 // Import screens
 import LoginScreen from '../screens/LoginScreen';
@@ -56,10 +58,40 @@ import ReportsArchive from '../screens/manager/ReportsArchive';
 const Stack = createStackNavigator<RootStackParamList>();
 
 const AppNavigator = () => {
+  const { isLoading, isAuthenticated, user } = useAuth();
+  const navigationRef = useNavigationContainerRef<RootStackParamList>();
+
+  // When user logs out, reset navigation to LoginScreen
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated && navigationRef.isReady()) {
+      navigationRef.reset({ index: 0, routes: [{ name: 'LoginScreen' }] });
+    }
+  }, [isAuthenticated, isLoading]);
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1e3a5f' }}>
+        <ActivityIndicator size="large" color="#f59e0b" />
+        <Text style={{ color: '#fff', marginTop: 16, fontSize: 16, fontWeight: '600' }}>Loading DeepShift...</Text>
+      </View>
+    );
+  }
+
+  const getInitialRoute = (): keyof RootStackParamList => {
+    if (!isAuthenticated) return 'LoginScreen';
+    switch (user?.role) {
+      case 'worker':  return 'WorkerDashboard';
+      case 'foreman': return 'ForemanDashboard';
+      case 'overman': return 'OvermanDashboard';
+      case 'manager': return 'ManagerDashboard';
+      default:        return 'LoginScreen';
+    }
+  };
+
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator
-        initialRouteName="HomeScreen"
+        initialRouteName={getInitialRoute()}
         screenOptions={{
           headerShown: false,
           cardStyle: { backgroundColor: '#f6f7fb' },

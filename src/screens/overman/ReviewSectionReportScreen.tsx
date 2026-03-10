@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,10 +9,14 @@ import {
   Modal,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
+import { shiftService } from '../../services/shiftService';
+import { useAuth } from '../../context/AuthContext';
+import { ShiftWithRelations } from '../../types/database';
 
 type ReviewSectionReportScreenNavigationProp =
   StackNavigationProp<RootStackParamList>;
@@ -52,108 +56,24 @@ interface SafetyReading {
 const ReviewSectionReportScreen: React.FC = () => {
   const navigation = useNavigation<ReviewSectionReportScreenNavigationProp>();
   const route = useRoute<ReviewSectionReportScreenRouteProp>();
+  const { user } = useAuth();
+  const { reportId } = route.params;
 
   const [commentModalVisible, setCommentModalVisible] = useState(false);
   const [comment, setComment] = useState('');
   const [actionModalVisible, setActionModalVisible] = useState(false);
   const [actionMessage, setActionMessage] = useState('');
+  const [shift, setShift] = useState<ShiftWithRelations | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isActing, setIsActing] = useState(false);
 
-  // Demo data - In real app, this would come from route params or API
-  const reportData = {
-    reportId: 'SR001',
-    sectionName: 'Panel 5-A',
-    foremanName: 'Rajesh Kumar',
-    foremanId: 'FM001',
-    shiftType: 'Morning Shift',
-    shiftDate: 'Oct 27, 2025',
-    submittedAt: '08:15 AM',
-    status: 'pending' as const,
-    workers: [
-      { id: 'W001', name: 'Ramesh Yadav', status: 'present' as const },
-      { id: 'W002', name: 'Sunil Kumar', status: 'present' as const },
-      { id: 'W003', name: 'Prakash Singh', status: 'present' as const },
-      { id: 'W004', name: 'Dinesh Patil', status: 'present' as const },
-      { id: 'W005', name: 'Anil Sharma', status: 'present' as const },
-      { id: 'W006', name: 'Vijay Verma', status: 'present' as const },
-      { id: 'W007', name: 'Rajesh Gupta', status: 'present' as const },
-      { id: 'W008', name: 'Mohan Das', status: 'absent' as const },
-    ],
-    equipment: [
-      {
-        id: 'E001',
-        name: 'Pump-03',
-        condition: 'needs-maintenance' as const,
-        remarks: 'Unusual noise detected',
-      },
-      { id: 'E002', name: 'Conveyor Belt-2A', condition: 'good' as const },
-      { id: 'E003', name: 'Drilling Machine-05', condition: 'good' as const },
-      { id: 'E004', name: 'Ventilation Fan-12', condition: 'good' as const },
-      {
-        id: 'E005',
-        name: 'Hydraulic Support-8B',
-        condition: 'faulty' as const,
-        remarks: 'Pressure leak detected',
-      },
-    ],
-    safetyReadings: [
-      {
-        parameter: 'Methane (CH₄)',
-        value: '0.4',
-        status: 'normal' as const,
-        unit: '%',
-      },
-      {
-        parameter: 'Carbon Monoxide (CO)',
-        value: '12',
-        status: 'normal' as const,
-        unit: 'ppm',
-      },
-      {
-        parameter: 'Oxygen (O₂)',
-        value: '20.8',
-        status: 'normal' as const,
-        unit: '%',
-      },
-      {
-        parameter: 'Temperature',
-        value: '28',
-        status: 'normal' as const,
-        unit: '°C',
-      },
-      {
-        parameter: 'Ventilation Flow',
-        value: '850',
-        status: 'normal' as const,
-        unit: 'm³/min',
-      },
-    ],
-    incidents: [
-      {
-        id: 'INC001',
-        type: 'Equipment Malfunction',
-        severity: 'medium' as const,
-        description:
-          'Hydraulic support system showed pressure drop. Maintenance team notified immediately.',
-        time: '10:30 AM',
-      },
-    ],
-    productionMetrics: {
-      coalExtracted: '145',
-      targetsAchieved: '92',
-    },
-    foremanRemarks:
-      'All operations conducted smoothly. Minor equipment issues noted and reported. Crew performed well with good safety compliance.',
-  };
-
-  const presentWorkers = reportData.workers.filter(
-    w => w.status === 'present',
-  ).length;
-  const absentWorkers = reportData.workers.filter(
-    w => w.status === 'absent',
-  ).length;
-  const faultyEquipment = reportData.equipment.filter(
-    e => e.condition === 'faulty' || e.condition === 'needs-maintenance',
-  ).length;
+  useEffect(() => {
+    if (!reportId) { setIsLoading(false); return; }
+    shiftService.getShiftById(reportId)
+      .then(setShift)
+      .catch(console.error)
+      .finally(() => setIsLoading(false));
+  }, [reportId]);
 
   const getEquipmentConditionColor = (condition: string) => {
     switch (condition) {
@@ -207,22 +127,40 @@ const ReviewSectionReportScreen: React.FC = () => {
     }
   };
 
-  const handleApprove = () => {
-    setActionMessage('Section Approved');
-    setActionModalVisible(true);
-    setTimeout(() => {
-      setActionModalVisible(false);
-      // In real app: Update status and navigate back
-    }, 2000);
+  const handleApprove = async () => {
+    if (!shift) return;
+    try {
+      setIsActing(true);
+      await shiftService.updateShiftStatus(shift.id, 'approved', user?.id);
+      setActionMessage('Section Approved');
+      setActionModalVisible(true);
+      setTimeout(() => {
+        setActionModalVisible(false);
+        navigation.goBack();
+      }, 2000);
+    } catch (err) {
+      Alert.alert('Error', 'Failed to approve. Please try again.');
+    } finally {
+      setIsActing(false);
+    }
   };
 
-  const handleReopen = () => {
-    setActionMessage('Reopened for Revision');
-    setActionModalVisible(true);
-    setTimeout(() => {
-      setActionModalVisible(false);
-      // In real app: Update status and navigate back
-    }, 2000);
+  const handleReopen = async () => {
+    if (!shift) return;
+    try {
+      setIsActing(true);
+      await shiftService.updateShiftStatus(shift.id, 'draft');
+      setActionMessage('Reopened for Revision');
+      setActionModalVisible(true);
+      setTimeout(() => {
+        setActionModalVisible(false);
+        navigation.goBack();
+      }, 2000);
+    } catch (err) {
+      Alert.alert('Error', 'Failed to reopen. Please try again.');
+    } finally {
+      setIsActing(false);
+    }
   };
 
   const handleAddComment = () => {
@@ -235,6 +173,69 @@ const ReviewSectionReportScreen: React.FC = () => {
       setCommentModalVisible(false);
     }
   };
+
+  // Derive display data from real Supabase shift
+  const workerLogs = shift?.worker_logs ?? [];
+  const equipmentLogs = shift?.equipment_logs ?? [];
+  const incidents = shift?.incidents ?? [];
+  const presentWorkers = workerLogs.filter(l => l.attendance_status === 'present').length;
+  const absentWorkers = workerLogs.filter(l => l.attendance_status === 'absent').length;
+  const faultyEquipment = equipmentLogs.filter(e => e.condition_status === 'faulty').length;
+
+  const reportData = {
+    reportId: shift?.id ?? reportId,
+    sectionName: (shift as any)?.section?.section_name ?? shift?.section_id ?? '—',
+    foremanName: 'Foreman',
+    shiftType: `${shift?.shift_type ? shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1) : '—'} Shift`,
+    shiftDate: shift?.shift_date ?? '—',
+    submittedAt: shift?.submitted_at
+      ? new Date(shift.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : 'Not submitted',
+    workers: workerLogs.map(l => ({
+      id: l.id,
+      name: l.worker_id,
+      status: (l.attendance_status ?? 'absent') as 'present' | 'absent',
+    })),
+    equipment: equipmentLogs.map(e => ({
+      id: e.id,
+      name: e.equipment_name,
+      condition: e.condition_status === 'faulty' ? ('faulty' as const) : ('good' as const),
+      remarks: e.issue_description ?? undefined,
+    })),
+    safetyReadings: [] as { parameter: string; value: string; status: 'normal' | 'warning' | 'critical'; unit: string }[],
+    incidents: incidents.map(i => ({
+      id: i.id,
+      type: i.incident_type,
+      severity: i.severity_level as 'low' | 'medium' | 'high',
+      description: i.description,
+      time: i.created_at
+        ? new Date(i.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : '—',
+    })),
+    productionMetrics: { coalExtracted: '—', targetsAchieved: '—' },
+    foremanRemarks: shift?.handover_notes ?? '',
+  };
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ActivityIndicator size="large" color="#1e3a5f" style={{ marginTop: 80 }} />
+      </SafeAreaView>
+    );
+  }
+
+  if (!shift) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: '#64748b', fontSize: 16 }}>Report not found</Text>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
+            <Text style={{ color: '#1e3a5f', fontWeight: '600' }}>← Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -511,21 +512,23 @@ const ReviewSectionReportScreen: React.FC = () => {
         {/* Action Buttons */}
         <View style={styles.actionsCard}>
           <TouchableOpacity
-            style={[styles.actionButton, styles.approveButton]}
+            style={[styles.actionButton, styles.approveButton, isActing && { opacity: 0.6 }]}
             onPress={handleApprove}
             activeOpacity={0.8}
+            disabled={isActing}
           >
             <Text style={styles.actionButtonIcon}>✓</Text>
-            <Text style={styles.actionButtonText}>Approve</Text>
+            <Text style={styles.actionButtonText}>{isActing ? 'Saving…' : 'Approve'}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.actionButton, styles.reopenButton]}
+            style={[styles.actionButton, styles.reopenButton, isActing && { opacity: 0.6 }]}
             onPress={handleReopen}
             activeOpacity={0.8}
+            disabled={isActing}
           >
             <Text style={styles.actionButtonIcon}>🔁</Text>
-            <Text style={styles.actionButtonText}>Reopen</Text>
+            <Text style={styles.actionButtonText}>{isActing ? 'Saving…' : 'Reopen'}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity

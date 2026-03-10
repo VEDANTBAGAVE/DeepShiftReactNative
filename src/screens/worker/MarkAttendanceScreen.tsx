@@ -13,18 +13,19 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
-import { useWorker } from '../../context/WorkerContext';
-import {
-  AttendanceRecord,
-  ShiftType,
-  PresenceStatus,
-} from '../../types/worker';
+import { useAuth } from '../../context/AuthContext';
+import { workerLogService } from '../../services/workerLogService';
+import { shiftService } from '../../services/shiftService';
+import { WorkerShiftLog } from '../../types/database';
+
+type ShiftType = 'morning' | 'evening' | 'night';
+type PresenceStatus = 'present' | 'absent';
 
 type MarkAttendanceNavigationProp = StackNavigationProp<RootStackParamList>;
 
 const SHIFT_TYPES: { value: ShiftType; label: string; icon: string }[] = [
   { value: 'morning', label: 'Morning', icon: '🌅' },
-  { value: 'afternoon', label: 'Afternoon', icon: '☀️' },
+  { value: 'evening', label: 'Evening', icon: '☀️' },
   { value: 'night', label: 'Night', icon: '🌙' },
 ];
 
@@ -38,36 +39,42 @@ const AREAS = [
 
 const MarkAttendanceScreen: React.FC = () => {
   const navigation = useNavigation<MarkAttendanceNavigationProp>();
-  const { getTodayAttendance, addAttendance } = useWorker();
+  const { user } = useAuth();
 
   const [shiftType, setShiftType] = useState<ShiftType>('morning');
-  const [area, setArea] = useState('Panel 5');
-  const [presenceStatus, setPresenceStatus] =
-    useState<PresenceStatus>('present');
+  const [presenceStatus, setPresenceStatus] = useState<PresenceStatus>('present');
   const [remarks, setRemarks] = useState('');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmedAt, setConfirmedAt] = useState<number | null>(null);
   const [saved, setSaved] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentLog, setCurrentLog] = useState<WorkerShiftLog | null>(null);
 
-  // Check if attendance already marked today
-  const todayAttendance = getTodayAttendance();
-
+  // Fetch today's attendance log from Supabase on mount
   useEffect(() => {
-    console.log('MarkAttendance - todayAttendance:', todayAttendance);
-    console.log('MarkAttendance - saved state:', saved);
-    if (todayAttendance) {
-      console.log('Attendance already exists - showing in read-only mode');
-      setShiftType(todayAttendance.shiftType);
-      setArea(todayAttendance.area);
-      setPresenceStatus(todayAttendance.presenceStatus);
-      setRemarks(todayAttendance.remarks || '');
-      setConfirmedAt(todayAttendance.confirmedAt || null);
-      setSaved(true);
-    } else {
-      console.log('No attendance found - form is editable');
-      setSaved(false);
-    }
-  }, [todayAttendance]);
+    const loadTodayLog = async () => {
+      if (!user?.section_id) { setIsLoading(false); return; }
+      try {
+        const shifts = await shiftService.getTodayShifts(user.section_id);
+        if (shifts.length > 0) {
+          const log = await workerLogService.getOrCreateWorkerLog(shifts[0].id, user.id);
+          setCurrentLog(log);
+          if (log.attendance_status) {
+            setPresenceStatus(log.attendance_status as PresenceStatus);
+            setRemarks(log.remarks || '');
+            if (log.check_in_time) setConfirmedAt(new Date(log.check_in_time).getTime());
+            setSaved(log.check_in_time != null);
+          }
+          setShiftType((shifts[0].shift_type as ShiftType) || 'morning');
+        }
+      } catch (e) {
+        console.error('Failed to load attendance:', e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadTodayLog();
+  }, [user]);
 
   const handleOpenConfirmModal = () => {
     if (presenceStatus === 'absent') {
@@ -85,30 +92,33 @@ const MarkAttendanceScreen: React.FC = () => {
   };
 
   const handleSave = async (confirmTimestamp?: number) => {
-    const record: AttendanceRecord = {
-      id: `att-${Date.now()}`,
-      date: new Date().toISOString().split('T')[0],
-      shiftType,
-      area,
-      presenceStatus,
-      confirmedAt: confirmTimestamp || confirmedAt || undefined,
-      remarks: remarks.trim() || undefined,
-      createdAt: Date.now(),
-    };
-
-    await addAttendance(record);
-    setSaved(true);
-
-    Alert.alert(
-      '✓ Attendance Marked',
-      `Your ${presenceStatus} status has been recorded for ${shiftType} shift in ${area}.`,
-      [
-        {
-          text: 'OK',
-          onPress: () => navigation.navigate('WorkerDashboard'),
-        },
-      ],
-    );
+    if (!user?.section_id) {
+      Alert.alert('Error', 'No section assigned to your account.');
+      return;
+    }
+    try {
+      const shifts = await shiftService.getTodayShifts(user.section_id);
+      if (shifts.length === 0) {
+        Alert.alert('No Active Shift', 'No shift found for today in your section.');
+        return;
+      }
+      const log = await workerLogService.markAttendance(
+        shifts[0].id,
+        user.id,
+        presenceStatus,
+        remarks.trim() || undefined,
+      );
+      setCurrentLog(log);
+      setSaved(true);
+      if (confirmTimestamp) setConfirmedAt(confirmTimestamp);
+      Alert.alert(
+        '✓ Attendance Marked',
+        `Your ${presenceStatus} status has been recorded for ${shiftType} shift.`,
+        [{ text: 'OK', onPress: () => navigation.navigate('WorkerDashboard') }],
+      );
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Failed to save attendance');
+    }
   };
 
   const formatTime = (timestamp: number) => {
@@ -139,20 +149,18 @@ const MarkAttendanceScreen: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollViewContent}
       >
-        {saved && todayAttendance && (
+        {saved && currentLog && (
           <View style={styles.alreadyMarkedBanner}>
             <Text style={styles.alreadyMarkedIcon}>✓</Text>
             <View style={styles.alreadyMarkedContent}>
               <Text style={styles.alreadyMarkedTitle}>Already Marked</Text>
               <Text style={styles.alreadyMarkedText}>
-                {todayAttendance.presenceStatus === 'present'
-                  ? 'Present'
-                  : 'Absent'}{' '}
-                • {todayAttendance.shiftType} shift • {todayAttendance.area}
+                {currentLog.attendance_status === 'present' ? 'Present' : 'Absent'}{' '}
+                • {shiftType} shift
               </Text>
-              {todayAttendance.confirmedAt && (
+              {currentLog.check_in_time && (
                 <Text style={styles.alreadyMarkedTime}>
-                  Confirmed at {formatTime(todayAttendance.confirmedAt)}
+                  Confirmed at {formatTime(new Date(currentLog.check_in_time).getTime())}
                 </Text>
               )}
             </View>
@@ -193,36 +201,13 @@ const MarkAttendanceScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Area / Section */}
+        {/* Area / Section - auto-populated from user profile */}
         <View style={styles.section}>
-          <View style={styles.labelRow}>
-            <Text style={styles.label}>📍 Area / Section</Text>
-            <Text style={styles.required}>*</Text>
-          </View>
-          <View style={styles.areaGrid}>
-            {AREAS.map(areaOption => (
-              <TouchableOpacity
-                key={areaOption}
-                activeOpacity={0.7}
-                style={[
-                  styles.areaButton,
-                  area === areaOption && styles.areaButtonActive,
-                ]}
-                onPress={() => {
-                  console.log('Area pressed:', areaOption);
-                  setArea(areaOption);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.areaButtonText,
-                    area === areaOption && styles.areaButtonTextActive,
-                  ]}
-                >
-                  {areaOption}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <Text style={styles.label}>📍 Section</Text>
+          <View style={[styles.areaButton, styles.areaButtonActive]}>
+            <Text style={styles.areaButtonTextActive}>
+              {user?.section_id ? 'Your Assigned Section' : 'No section assigned'}
+            </Text>
           </View>
         </View>
 
@@ -367,7 +352,7 @@ const MarkAttendanceScreen: React.FC = () => {
 
             <View style={styles.modalInfoBox}>
               <Text style={styles.modalInfoLabel}>Location:</Text>
-              <Text style={styles.modalInfoValue}>{area}</Text>
+              <Text style={styles.modalInfoValue}>{user?.section_id ?? 'Your Section'}</Text>
               <Text style={styles.modalInfoLabel}>Shift:</Text>
               <Text style={styles.modalInfoValue}>
                 {shiftType.toUpperCase()}

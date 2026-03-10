@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -6,26 +6,43 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
-import { useWorker } from '../../context/WorkerContext';
+import { useAuth } from '../../context/AuthContext';
+import { shiftService } from '../../services/shiftService';
+import { Shift } from '../../types/database';
 
 type ShiftHistoryNavigationProp = StackNavigationProp<RootStackParamList>;
 
-const STATUS_COLORS = {
+const STATUS_COLORS: Record<string, string> = {
   draft: '#94a3b8',
   submitted: '#10b981',
-  reopened: '#f59e0b',
-  acknowledged: '#3b82f6',
+  approved: '#3b82f6',
+  archived: '#64748b',
+  flagged: '#f97316',
 };
 
 const ShiftHistoryScreen: React.FC = () => {
   const navigation = useNavigation<ShiftHistoryNavigationProp>();
-  const { shifts } = useWorker();
+  const { user } = useAuth();
+  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const sortedShifts = [...shifts].sort((a, b) => b.createdAt - a.createdAt);
+  useEffect(() => {
+    if (!user?.section_id) return;
+    shiftService
+      .getShifts({ section_id: user.section_id })
+      .then(setShifts)
+      .catch(console.error)
+      .finally(() => setIsLoading(false));
+  }, [user]);
+
+  const sortedShifts = [...shifts].sort(
+    (a, b) => new Date(b.shift_date).getTime() - new Date(a.shift_date).getTime(),
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -38,25 +55,19 @@ const ShiftHistoryScreen: React.FC = () => {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Shift History</Text>
-          <Text style={styles.headerSubtitle}>{shifts.length} shifts</Text>
+          <Text style={styles.headerSubtitle}>{sortedShifts.length} shifts</Text>
         </View>
-        <TouchableOpacity onPress={() => navigation.navigate('NewShiftScreen')}>
-          <Text style={styles.newShiftButton}>+ New</Text>
-        </TouchableOpacity>
+        <View style={{ width: 60 }} />
       </View>
 
       <ScrollView style={styles.scrollView}>
-        {sortedShifts.length === 0 ? (
+        {isLoading ? (
+          <ActivityIndicator size="large" color="#1e3a5f" style={{ marginTop: 60 }} />
+        ) : sortedShifts.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>📋</Text>
             <Text style={styles.emptyTitle}>No Shifts Yet</Text>
-            <Text style={styles.emptyText}>Create your first shift log</Text>
-            <TouchableOpacity
-              style={styles.emptyButton}
-              onPress={() => navigation.navigate('NewShiftScreen')}
-            >
-              <Text style={styles.emptyButtonText}>+ Create First Shift</Text>
-            </TouchableOpacity>
+            <Text style={styles.emptyText}>No shifts found for your section</Text>
           </View>
         ) : (
           sortedShifts.map(shift => (
@@ -69,15 +80,15 @@ const ShiftHistoryScreen: React.FC = () => {
             >
               <View style={styles.shiftHeader}>
                 <View>
-                  <Text style={styles.shiftDate}>{shift.date}</Text>
+                  <Text style={styles.shiftDate}>{shift.shift_date}</Text>
                   <Text style={styles.shiftInfo}>
-                    {shift.shiftType.toUpperCase()} • {shift.area}
+                    {shift.shift_type.toUpperCase()} SHIFT
                   </Text>
                 </View>
                 <View
                   style={[
                     styles.statusBadge,
-                    { backgroundColor: STATUS_COLORS[shift.status] },
+                    { backgroundColor: STATUS_COLORS[shift.status] ?? '#94a3b8' },
                   ]}
                 >
                   <Text style={styles.statusBadgeText}>
@@ -86,20 +97,19 @@ const ShiftHistoryScreen: React.FC = () => {
                 </View>
               </View>
 
-              {shift.reopenedReason && (
+              {shift.handover_notes ? (
                 <View style={styles.reopenedBanner}>
                   <Text style={styles.reopenedText}>
-                    🔄 {shift.reopenedReason}
+                    📝 {shift.handover_notes}
                   </Text>
                 </View>
-              )}
+              ) : null}
 
               <View style={styles.shiftStats}>
                 <Text style={styles.shiftStat}>
-                  ⚙️ {shift.equipment.length} equipment
-                </Text>
-                <Text style={styles.shiftStat}>
-                  ⚠️ {shift.incidentIds.length} incidents
+                  📅 {shift.submitted_at
+                    ? `Submitted ${new Date(shift.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                    : 'Not yet submitted'}
                 </Text>
               </View>
             </TouchableOpacity>

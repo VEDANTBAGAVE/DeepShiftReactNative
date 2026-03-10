@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   View,
   StyleSheet,
@@ -11,7 +11,8 @@ import {
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
-import { useWorker } from '../context/WorkerContext';
+import { useAuth } from '../context/AuthContext';
+import { useWorkerDashboard } from '../hooks/useDashboard';
 
 type WorkerDashboardNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -44,54 +45,25 @@ const FeatureCard: React.FC<FeatureCardProps> = ({
 
 const WorkerDashboard: React.FC = () => {
   const navigation = useNavigation<WorkerDashboardNavigationProp>();
-  const {
-    getTodayAttendance,
-    getTodayIncidents,
-    getTodayTasks,
-    getUnreadRemarksCount,
-    settings,
-    loadDemoData,
-    isLoading,
-  } = useWorker();
+  const { user, logout } = useAuth();
+  const { currentShift, workerLog, todayIncidents, isLoading, refreshData } = useWorkerDashboard();
 
-  const [stats, setStats] = useState({
-    attendanceMarked: false,
-    tasksCount: 0,
-    incidentsCount: 0,
-    unreadRemarks: 0,
-  });
-
-  // Refresh stats when screen focuses
+  // Refresh data when screen focuses
   useFocusEffect(
     React.useCallback(() => {
-      refreshStats();
-    }, []),
+      refreshData();
+    }, [refreshData]),
   );
 
-  const refreshStats = () => {
-    const attendance = getTodayAttendance();
-    const tasks = getTodayTasks();
-    const incidents = getTodayIncidents();
-    const unreads = getUnreadRemarksCount();
-
-    setStats({
-      attendanceMarked: !!attendance,
-      tasksCount: tasks.length,
-      incidentsCount: incidents.length,
-      unreadRemarks: unreads,
-    });
+  const stats = {
+    attendanceMarked: workerLog?.attendance_status === 'present',
+    tasksCount: 0,
+    incidentsCount: todayIncidents.length,
+    unreadRemarks: 0,
   };
 
-  // Load demo data on first launch if empty
-  useEffect(() => {
-    if (!isLoading && !getTodayAttendance() && !settings.demoMode) {
-      // Optionally prompt to load demo data
-      // For now, automatically load it
-      loadDemoData();
-    }
-  }, [isLoading]);
-
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logout();
     navigation.navigate('HomeScreen');
   };
 
@@ -150,14 +122,14 @@ const WorkerDashboard: React.FC = () => {
       {/* Current Shift Info Banner */}
       <View style={styles.shiftBanner}>
         <Text style={styles.shiftBannerText}>
-          🕐 Morning Shift | 📍 Section: Panel 5 | � Foreman: Rajesh Kumar
+          🕐 {currentShift?.shift_type || 'No Active Shift'} | 📍 Emp: {user?.employee_code || 'N/A'} | {isLoading ? 'Loading...' : currentShift ? 'Shift Active' : 'No Shift Today'}
         </Text>
       </View>
 
       <ScrollView style={styles.scrollView}>
         {/* Welcome Message */}
         <View style={styles.welcomeCard}>
-          <Text style={styles.welcomeTitle}>Welcome, Worker!</Text>
+          <Text style={styles.welcomeTitle}>Welcome, {user?.name || 'Worker'}!</Text>
           <Text style={styles.welcomeText}>
             Mark your attendance, report incidents, and view your daily tasks
             assigned by your foreman.
@@ -228,7 +200,7 @@ const WorkerDashboard: React.FC = () => {
       {/* Bottom Info Bar */}
       <View style={styles.bottomBar}>
         <Text style={styles.bottomBarText}>
-          📊 2 pending shifts • 1 reopened • 0 incidents
+          📊 {stats.incidentsCount} incidents reported • Attendance: {stats.attendanceMarked ? 'Marked ✓' : 'Not marked'}
         </Text>
       </View>
     </SafeAreaView>

@@ -12,7 +12,7 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
-import { useForeman } from '../../context/ForemanContext';
+import { useForemanDashboard } from '../../hooks/useDashboard';
 
 type CreateRemarkScreenRouteProp = RouteProp<
   RootStackParamList,
@@ -26,65 +26,36 @@ const CreateRemarkScreen: React.FC = () => {
   const navigation = useNavigation<CreateRemarkScreenNavigationProp>();
   const route = useRoute<CreateRemarkScreenRouteProp>();
   const { workerId } = route.params;
-  const { addRemark, getWorkerById } = useForeman();
+  const { workers } = useForemanDashboard();
 
-  const worker = getWorkerById(workerId);
+  const worker = workers.find(w => w.id === workerId) ?? null;
   const [message, setMessage] = useState('');
   const [severity, setSeverity] = useState<Severity>('info');
   const [requiresAction, setRequiresAction] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async () => {
-    // Validation
     if (!message.trim()) {
       Alert.alert('Validation Error', 'Please enter a remark message');
       return;
     }
-
     if (message.length < 10) {
-      Alert.alert(
-        'Validation Error',
-        'Remark must be at least 10 characters long',
-      );
+      Alert.alert('Validation Error', 'Remark must be at least 10 characters long');
       return;
     }
-
     if (message.length > 500) {
       Alert.alert('Validation Error', 'Remark must be 500 characters or less');
       return;
     }
 
     setIsSubmitting(true);
-
-    try {
-      await addRemark({
-        from: 'Foreman',
-        message: message.trim(),
-        summary:
-          message.trim().substring(0, 50) + (message.length > 50 ? '...' : ''),
-        isReopened: false,
-        isRead: false,
-        linkedShiftId: undefined,
-        linkedWorkerId: workerId,
-        severity,
-        requiresAction,
-      });
-
-      Alert.alert('Success', `Remark sent to ${worker?.name || 'worker'}`, [
-        {
-          text: 'View Profile',
-          onPress: () =>
-            navigation.navigate('WorkerProfileSheet', { workerId }),
-        },
-        {
-          text: 'Done',
-          onPress: () => navigation.goBack(),
-        },
-      ]);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to add remark. Please try again.');
+    // Remarks feature requires a database table — coming soon
+    setTimeout(() => {
       setIsSubmitting(false);
-    }
+      Alert.alert('Coming Soon', 'Remark submission will be available once the remarks table is added.', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+    }, 300);
   };
 
   return (
@@ -117,7 +88,7 @@ const CreateRemarkScreen: React.FC = () => {
               <View>
                 <Text style={styles.workerName}>{worker.name}</Text>
                 <Text style={styles.workerDetail}>
-                  {worker.role} • {worker.section}
+                  {worker.role} • {worker.section_id ?? 'N/A'}
                 </Text>
               </View>
             </View>

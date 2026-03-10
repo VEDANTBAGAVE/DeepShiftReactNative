@@ -8,46 +8,74 @@ import {
   ScrollView,
   TextInput,
   Modal,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
+import { useAuth } from '../../context/AuthContext';
+import { useOvermanDashboard } from '../../hooks/useDashboard';
+import { shiftService } from '../../services/shiftService';
 
 type CreateShiftLogScreenNavigationProp =
   StackNavigationProp<RootStackParamList>;
 
 const CreateShiftLogScreen: React.FC = () => {
   const navigation = useNavigation<CreateShiftLogScreenNavigationProp>();
+  const { user } = useAuth();
+  const { shifts } = useOvermanDashboard();
 
   const [remarks, setRemarks] = useState('');
   const [successModalVisible, setSuccessModalVisible] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Demo data - Summary compiled from all sections
+  const today = new Date().toISOString().split('T')[0];
+  const todayShifts = shifts.filter(s => s.shift_date === today);
+  const shiftType = todayShifts[0]?.shift_type ?? 'morning';
+
   const shiftSummary = {
-    date: 'October 27, 2025',
-    shiftType: 'Morning Shift',
-    shiftTime: '06:00 AM - 02:00 PM',
-    totalSections: 8,
-    sectionsReviewed: 8,
-    totalWorkers: 56,
-    workersPresent: 51,
-    workersAbsent: 5,
-    totalIncidents: 2,
+    date: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }),
+    shiftType: `${shiftType.charAt(0).toUpperCase() + shiftType.slice(1)} Shift`,
+    shiftTime: shiftType === 'morning' ? '06:00 AM - 02:00 PM'
+             : shiftType === 'evening' ? '02:00 PM - 10:00 PM'
+             : '10:00 PM - 06:00 AM',
+    totalSections: todayShifts.length,
+    sectionsReviewed: todayShifts.filter(s => s.status === 'submitted' || s.status === 'approved').length,
+    totalWorkers: 0,
+    workersPresent: 0,
+    workersAbsent: 0,
+    totalIncidents: 0,
     criticalIncidents: 0,
-    equipmentIssues: 3,
-    safetyScore: 92,
-    productionAchieved: 91,
-    coalExtracted: '1,145 tons',
-    targetCoal: '1,260 tons',
+    equipmentIssues: 0,
+    coalExtracted: 'N/A',
+    targetCoal: 'N/A',
+    productionAchieved: 0,
+    safetyScore: 100,
   };
 
-  const handleSubmitShiftLog = () => {
-    setSuccessModalVisible(true);
-    setTimeout(() => {
-      setSuccessModalVisible(false);
-      // In real app: Navigate back to dashboard or submitted logs
-      navigation.goBack();
-    }, 2500);
+  const handleSubmitShiftLog = async () => {
+    if (!user?.section_id) {
+      Alert.alert('Error', 'No section assigned to your account.');
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      // Update all submitted shifts for today to approved
+      await Promise.all(
+        todayShifts
+          .filter(s => s.status === 'submitted')
+          .map(s => shiftService.updateShiftStatus(s.id, 'approved', user.id)),
+      );
+      setSuccessModalVisible(true);
+      setTimeout(() => {
+        setSuccessModalVisible(false);
+        navigation.goBack();
+      }, 2500);
+    } catch (err) {
+      Alert.alert('Error', 'Failed to submit shift log. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

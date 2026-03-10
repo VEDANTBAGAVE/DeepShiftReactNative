@@ -10,8 +10,7 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
-import { useForeman } from '../../context/ForemanContext';
-import { AttendanceStatus } from '../../types/worker';
+import { useForemanDashboard } from '../../hooks/useDashboard';
 
 type WorkerProfileSheetRouteProp = RouteProp<
   RootStackParamList,
@@ -23,12 +22,35 @@ const WorkerProfileSheet: React.FC = () => {
   const navigation = useNavigation<WorkerProfileSheetNavigationProp>();
   const route = useRoute<WorkerProfileSheetRouteProp>();
   const { workerId } = route.params;
-  const { getWorkerById } = useForeman();
+  const { workers, workerLogs, incidents } = useForemanDashboard();
 
   const worker = useMemo(
-    () => getWorkerById(workerId),
-    [workerId, getWorkerById],
+    () => workers.find(w => w.id === workerId) ?? null,
+    [workers, workerId],
   );
+
+  const workerLog = useMemo(
+    () => workerLogs.find(l => l.worker_id === workerId) ?? null,
+    [workerLogs, workerId],
+  );
+
+  const workerIncidents = useMemo(
+    () => incidents.filter(i => i.reported_by === workerId),
+    [incidents, workerId],
+  );
+
+  const getStatusColor = (status?: string | null) => {
+    switch (status) {
+      case 'present': return '#10b981';
+      case 'absent':  return '#ef4444';
+      default:        return '#94a3b8';
+    }
+  };
+
+  const getStatusLabel = (status?: string | null) => {
+    if (!status || status === 'not-marked') return 'Not Marked';
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
 
   if (!worker) {
     return (
@@ -40,6 +62,8 @@ const WorkerProfileSheet: React.FC = () => {
           >
             <Text style={styles.closeButtonText}>✕ Close</Text>
           </TouchableOpacity>
+          <Text style={styles.headerTitle}>Worker Profile</Text>
+          <View style={styles.headerSpacer} />
         </View>
         <View style={styles.errorContainer}>
           <Text style={styles.errorIcon}>⚠️</Text>
@@ -49,86 +73,8 @@ const WorkerProfileSheet: React.FC = () => {
     );
   }
 
-  const getStatusColor = (status?: AttendanceStatus) => {
-    switch (status) {
-      case 'present':
-        return '#10b981';
-      case 'absent':
-        return '#ef4444';
-      case 'tardy':
-        return '#f59e0b';
-      default:
-        return '#94a3b8';
-    }
-  };
-
-  const getStatusLabel = (status?: AttendanceStatus) => {
-    return status === 'not-marked' || !status
-      ? 'Not Marked'
-      : status.charAt(0).toUpperCase() + status.slice(1);
-  };
-
-  const formatTime = (timestamp?: number) => {
-    if (!timestamp) return 'Not marked yet';
-    return new Date(timestamp).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-    });
-  };
-
-  const handleAddRemark = () => {
-    navigation.navigate('CreateRemarkScreen', { workerId });
-  };
-
-  const handleAssignTask = () => {
-    navigation.navigate('CreateTaskScreen', { selectedWorkers: [workerId] });
-  };
-
-  const handleViewIncidents = () => {
-    // Navigate to incidents screen filtered for this worker
-    navigation.navigate('SectionIncidentsScreen');
-  };
-
-  // Generate recent attendance (mock data - last 7 days)
-  const recentAttendance = useMemo(() => {
-    const today = new Date();
-    const attendance = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      const timestamp = date.getTime();
-
-      // Today's attendance comes from worker data
-      if (i === 0) {
-        attendance.push({
-          date: timestamp,
-          status: worker.todayAttendance || 'not-marked',
-        });
-      } else {
-        // Mock previous days (mostly present with occasional variations)
-        const rand = Math.random();
-        let status: AttendanceStatus;
-        if (rand > 0.9) status = 'absent';
-        else if (rand > 0.85) status = 'tardy';
-        else status = 'present';
-        attendance.push({ date: timestamp, status });
-      }
-    }
-    return attendance;
-  }, [worker.todayAttendance]);
-
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
@@ -153,12 +99,9 @@ const WorkerProfileSheet: React.FC = () => {
             <View style={styles.overviewInfo}>
               <Text style={styles.workerName}>{worker.name}</Text>
               <Text style={styles.workerRole}>{worker.role}</Text>
-              <Text style={styles.workerDetail}>ID: {worker.employeeId}</Text>
-              <Text style={styles.workerDetail}>Section: {worker.section}</Text>
-              {worker.contactNumber && (
-                <Text style={styles.workerDetail}>
-                  📞 {worker.contactNumber}
-                </Text>
+              <Text style={styles.workerDetail}>ID: {worker.employee_code}</Text>
+              {worker.phone && (
+                <Text style={styles.workerDetail}>📞 {worker.phone}</Text>
               )}
             </View>
           </View>
@@ -166,90 +109,47 @@ const WorkerProfileSheet: React.FC = () => {
           <View
             style={[
               styles.statusBanner,
-              { backgroundColor: getStatusColor(worker.todayAttendance) },
+              { backgroundColor: getStatusColor(workerLog?.attendance_status) },
             ]}
           >
             <View style={styles.statusBannerRow}>
               <View style={styles.statusBannerLeft}>
                 <Text style={styles.statusBannerText}>
-                  Today: {getStatusLabel(worker.todayAttendance)}
+                  Today: {getStatusLabel(workerLog?.attendance_status)}
                 </Text>
-                {worker.attendanceMarkedAt && (
+                {workerLog?.check_in_time && (
                   <View style={styles.attendanceTimestamp}>
                     <Text style={styles.attendanceTimestampIcon}>🕐</Text>
                     <Text style={styles.attendanceTimestampText}>
-                      Marked at {formatTime(worker.attendanceMarkedAt)}
+                      Check-in: {new Date(workerLog.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </Text>
                   </View>
                 )}
               </View>
-              {worker.attendanceMarkedAt && (
+              {workerLog?.attendance_status === 'present' && (
                 <View style={styles.verifiedBadge}>
-                  <Text style={styles.verifiedBadgeText}>✓ Verified</Text>
+                  <Text style={styles.verifiedBadgeText}>✓ Present</Text>
                 </View>
               )}
             </View>
           </View>
-
-          {worker.attendanceReason && (
-            <View style={styles.reasonBox}>
-              <Text style={styles.reasonLabel}>Reason:</Text>
-              <Text style={styles.reasonText}>{worker.attendanceReason}</Text>
-            </View>
-          )}
         </View>
 
-        {/* Recent Attendance */}
+        {/* Today's Work Log */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            📅 Recent Attendance (Last 7 Days)
-          </Text>
-          <View style={styles.attendanceGrid}>
-            {recentAttendance.map((day, index) => (
-              <View key={index} style={styles.attendanceDay}>
-                <Text style={styles.attendanceDayLabel}>
-                  {formatDate(day.date)}
-                </Text>
-                <View
-                  style={[
-                    styles.attendanceDayBadge,
-                    { backgroundColor: getStatusColor(day.status) },
-                  ]}
-                >
-                  <Text style={styles.attendanceDayBadgeText}>
-                    {day.status === 'present'
-                      ? '✓'
-                      : day.status === 'absent'
-                      ? '✕'
-                      : '◷'}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* Open Tasks */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>📋 Open Tasks</Text>
-            <View style={styles.countBadge}>
-              <Text style={styles.countBadgeText}>{worker.openTasksCount}</Text>
-            </View>
-          </View>
-          {worker.openTasksCount > 0 ? (
+          <Text style={styles.sectionTitle}>📋 Today's Work Log</Text>
+          {workerLog?.tasks_performed ? (
             <View style={styles.placeholderBox}>
-              <Text style={styles.placeholderText}>
-                {worker.openTasksCount} task(s) assigned
-              </Text>
-              <Text style={styles.placeholderHint}>
-                Task details will be shown here when task management is fully
-                integrated
-              </Text>
+              <Text style={styles.placeholderText}>{workerLog.tasks_performed}</Text>
             </View>
           ) : (
             <View style={styles.emptyBox}>
-              <Text style={styles.emptyText}>No open tasks</Text>
+              <Text style={styles.emptyText}>No tasks logged yet</Text>
+            </View>
+          )}
+          {workerLog?.remarks && (
+            <View style={[styles.placeholderBox, { marginTop: 8 }]}>
+              <Text style={styles.placeholderHint}>Remarks: {workerLog.remarks}</Text>
             </View>
           )}
         </View>
@@ -257,28 +157,23 @@ const WorkerProfileSheet: React.FC = () => {
         {/* Recent Incidents */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>⚠️ Recent Incidents</Text>
+            <Text style={styles.sectionTitle}>⚠️ Incidents (Today)</Text>
             <View
               style={[
                 styles.countBadge,
-                worker.recentIncidentsCount > 0 && {
-                  backgroundColor: '#ef4444',
-                },
+                workerIncidents.length > 0 && { backgroundColor: '#ef4444' },
               ]}
             >
-              <Text style={styles.countBadgeText}>
-                {worker.recentIncidentsCount}
-              </Text>
+              <Text style={styles.countBadgeText}>{workerIncidents.length}</Text>
             </View>
           </View>
-          {worker.recentIncidentsCount > 0 ? (
+          {workerIncidents.length > 0 ? (
             <>
               <View style={styles.incidentAlert}>
                 <Text style={styles.incidentAlertIcon}>⚠️</Text>
                 <View style={styles.incidentAlertContent}>
                   <Text style={styles.incidentAlertText}>
-                    {worker.recentIncidentsCount} incident(s) in the last 30
-                    days
+                    {workerIncidents.length} incident(s) reported today
                   </Text>
                   <Text style={styles.incidentAlertSubtext}>
                     Requires attention and review
@@ -287,56 +182,15 @@ const WorkerProfileSheet: React.FC = () => {
               </View>
               <TouchableOpacity
                 style={styles.viewMoreButton}
-                onPress={handleViewIncidents}
+                onPress={() => navigation.navigate('SectionIncidentsScreen')}
               >
-                <Text style={styles.viewMoreButtonText}>
-                  View All Incidents →
-                </Text>
+                <Text style={styles.viewMoreButtonText}>View All Incidents →</Text>
               </TouchableOpacity>
             </>
           ) : (
             <View style={styles.emptyBox}>
-              <Text style={styles.emptyText}>✅ No recent incidents</Text>
-              <Text style={styles.emptySubtext}>
-                Good safety record maintained
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Latest Remarks */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>💬 Latest Remarks</Text>
-          {worker.latestRemark ? (
-            <View style={styles.remarkPreview}>
-              <View style={styles.remarkHeader}>
-                <Text style={styles.remarkDate}>
-                  {formatDate(worker.latestRemark.timestamp)}
-                </Text>
-                <View style={styles.remarkTypeBadge}>
-                  <Text style={styles.remarkTypeBadgeText}>
-                    {worker.latestRemark.type}
-                  </Text>
-                </View>
-              </View>
-              <Text style={styles.remarkText} numberOfLines={2}>
-                {worker.latestRemark.text}
-              </Text>
-              <View style={styles.remarkFooter}>
-                <Text style={styles.remarkAuthor}>
-                  By: {worker.latestRemark.author}
-                </Text>
-                <TouchableOpacity onPress={handleAddRemark}>
-                  <Text style={styles.remarkViewAll}>View All →</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.placeholderBox}>
-              <Text style={styles.placeholderText}>No remarks yet</Text>
-              <Text style={styles.placeholderHint}>
-                Add remarks to track performance and behavior
-              </Text>
+              <Text style={styles.emptyText}>✅ No incidents today</Text>
+              <Text style={styles.emptySubtext}>Good safety record maintained</Text>
             </View>
           )}
         </View>
@@ -345,26 +199,17 @@ const WorkerProfileSheet: React.FC = () => {
         <View style={styles.actionButtons}>
           <TouchableOpacity
             style={[styles.actionButton, styles.actionButtonPrimary]}
-            onPress={handleAddRemark}
+            onPress={() => navigation.navigate('CreateRemarkScreen', { workerId })}
           >
             <Text style={styles.actionButtonText}>💬 Add Remark</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionButton, styles.actionButtonSecondary]}
-            onPress={handleAssignTask}
+            onPress={() => navigation.navigate('CreateTaskScreen', { selectedWorkers: [workerId] })}
           >
             <Text style={styles.actionButtonText}>📋 Assign Task</Text>
           </TouchableOpacity>
         </View>
-
-        {/* Last Activity */}
-        {worker.lastActivityAt && (
-          <View style={styles.lastActivity}>
-            <Text style={styles.lastActivityText}>
-              Last activity: {formatTime(worker.lastActivityAt)}
-            </Text>
-          </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );

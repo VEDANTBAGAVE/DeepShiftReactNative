@@ -11,58 +11,26 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
-import { useWorker } from '../../context/WorkerContext';
+import { useAuth } from '../../context/AuthContext';
 
 type WorkerSettingsNavigationProp = StackNavigationProp<RootStackParamList>;
 
 const WorkerSettingsScreen: React.FC = () => {
   const navigation = useNavigation<WorkerSettingsNavigationProp>();
-  const { settings, updateSettings, loadDemoData, clearAllData } = useWorker();
+  const { logout } = useAuth();
 
-  const handleLanguageChange = async (lang: 'en' | 'hi' | 'mr') => {
-    await updateSettings({ language: lang });
+  const [language, setLanguage] = React.useState<'en' | 'hi' | 'mr'>('en');
+
+  const handleLanguageChange = (lang: 'en' | 'hi' | 'mr') => {
+    setLanguage(lang);
     Alert.alert('Language Changed', `Language set to ${lang.toUpperCase()}`);
   };
 
-  const handleLoadDemoData = async () => {
-    Alert.alert(
-      'Load Demo Data',
-      'This will add sample shifts, tasks, and remarks for demonstration',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Load',
-          onPress: async () => {
-            await loadDemoData();
-            Alert.alert('Success', 'Demo data loaded successfully');
-          },
-        },
-      ],
-    );
-  };
-
-  const handleClearData = async () => {
-    Alert.alert(
-      'Clear All Data',
-      'This will delete all shifts, attendance, incidents, tasks, and remarks. This cannot be undone!',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Clear',
-          style: 'destructive',
-          onPress: async () => {
-            await clearAllData();
-            Alert.alert('Success', 'All data cleared');
-          },
-        },
-      ],
-    );
+  const handleSignOut = () => {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign Out', style: 'destructive', onPress: () => logout() },
+    ]);
   };
 
   return (
@@ -94,8 +62,7 @@ const WorkerSettingsScreen: React.FC = () => {
                 key={lang.code}
                 style={[
                   styles.languageButton,
-                  settings.language === lang.code &&
-                    styles.languageButtonActive,
+                  language === lang.code && styles.languageButtonActive,
                 ]}
                 onPress={() =>
                   handleLanguageChange(lang.code as 'en' | 'hi' | 'mr')
@@ -104,8 +71,7 @@ const WorkerSettingsScreen: React.FC = () => {
                 <Text
                   style={[
                     styles.languageButtonText,
-                    settings.language === lang.code &&
-                      styles.languageButtonTextActive,
+                    language === lang.code && styles.languageButtonTextActive,
                   ]}
                 >
                   {lang.label}
@@ -115,30 +81,15 @@ const WorkerSettingsScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Demo Data */}
+        {/* Account */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🎯 Demo & Testing</Text>
-
-          {settings.demoMode && (
-            <View style={styles.demoBanner}>
-              <Text style={styles.demoBannerText}>📊 Demo Mode Active</Text>
-            </View>
-          )}
-
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={handleLoadDemoData}
-          >
-            <Text style={styles.actionButtonIcon}>📦</Text>
-            <Text style={styles.actionButtonText}>Load Demo Data</Text>
-          </TouchableOpacity>
-
+          <Text style={styles.sectionTitle}>🔐 Account</Text>
           <TouchableOpacity
             style={styles.actionButtonDanger}
-            onPress={handleClearData}
+            onPress={handleSignOut}
           >
-            <Text style={styles.actionButtonIcon}>🗑️</Text>
-            <Text style={styles.actionButtonTextDanger}>Clear All Data</Text>
+            <Text style={styles.actionButtonIcon}>🚪</Text>
+            <Text style={styles.actionButtonTextDanger}>Sign Out</Text>
           </TouchableOpacity>
         </View>
 

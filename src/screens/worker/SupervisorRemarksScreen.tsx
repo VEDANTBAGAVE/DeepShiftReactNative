@@ -10,42 +10,13 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
-import { useWorker } from '../../context/WorkerContext';
-
 type SupervisorRemarksNavigationProp = StackNavigationProp<RootStackParamList>;
 
 const SupervisorRemarksScreen: React.FC = () => {
   const navigation = useNavigation<SupervisorRemarksNavigationProp>();
-  const {
-    remarks,
-    markRemarkAsRead,
-    markAllRemarksAsRead,
-    getUnreadRemarksCount,
-  } = useWorker();
 
-  const unreadCount = getUnreadRemarksCount();
-
-  const formatTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const now = Date.now();
-    const diff = now - timestamp;
-
-    if (diff < 3600000) {
-      return `${Math.floor(diff / 60000)}m ago`;
-    } else if (diff < 86400000) {
-      return `${Math.floor(diff / 3600000)}h ago`;
-    } else {
-      return date.toLocaleDateString();
-    }
-  };
-
-  const handleRemarkPress = async (remarkId: string) => {
-    await markRemarkAsRead(remarkId);
-  };
-
-  const handleMarkAllRead = async () => {
-    await markAllRemarksAsRead();
-  };
+  const remarks: never[] = [];
+  const unreadCount = 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -67,68 +38,20 @@ const SupervisorRemarksScreen: React.FC = () => {
 
       {unreadCount > 0 && (
         <View style={styles.actionBar}>
-          <TouchableOpacity
-            style={styles.markAllReadButton}
-            onPress={handleMarkAllRead}
-          >
+          <TouchableOpacity style={styles.markAllReadButton}>
             <Text style={styles.markAllReadText}>✓ Mark All Read</Text>
           </TouchableOpacity>
         </View>
       )}
 
       <ScrollView style={styles.scrollView}>
-        {remarks.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>💬</Text>
-            <Text style={styles.emptyTitle}>No Remarks Yet</Text>
-            <Text style={styles.emptyText}>
-              Your foreman's remarks and messages will appear here
-            </Text>
-          </View>
-        ) : (
-          remarks.map(remark => (
-            <TouchableOpacity
-              key={remark.id}
-              style={[
-                styles.remarkCard,
-                !remark.isRead && styles.remarkCardUnread,
-                remark.isReopened && styles.remarkCardReopened,
-              ]}
-              onPress={() => handleRemarkPress(remark.id)}
-            >
-              {!remark.isRead && <View style={styles.unreadDot} />}
-
-              {remark.isReopened && (
-                <View style={styles.reopenedBadge}>
-                  <Text style={styles.reopenedBadgeText}>REOPENED</Text>
-                </View>
-              )}
-
-              <View style={styles.remarkHeader}>
-                <Text style={styles.remarkFrom}>{remark.from}</Text>
-                <Text style={styles.remarkTime}>
-                  {formatTime(remark.createdAt)}
-                </Text>
-              </View>
-
-              <Text style={styles.remarkSummary}>{remark.summary}</Text>
-              <Text style={styles.remarkMessage}>{remark.message}</Text>
-
-              {remark.linkedShiftId && (
-                <TouchableOpacity
-                  style={styles.viewShiftButton}
-                  onPress={() =>
-                    navigation.navigate('ShiftDetailScreen', {
-                      shiftId: remark.linkedShiftId!,
-                    })
-                  }
-                >
-                  <Text style={styles.viewShiftText}>View Shift →</Text>
-                </TouchableOpacity>
-              )}
-            </TouchableOpacity>
-          ))
-        )}
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyIcon}>💬</Text>
+          <Text style={styles.emptyTitle}>No Remarks Yet</Text>
+          <Text style={styles.emptyText}>
+            Your foreman's remarks and messages will appear here
+          </Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

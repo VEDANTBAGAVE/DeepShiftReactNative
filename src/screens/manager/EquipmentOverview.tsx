@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -7,10 +7,13 @@ import {
   SafeAreaView,
   ScrollView,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
+import { equipmentService } from '../../services/equipmentService';
+import { EquipmentLog } from '../../types/database';
 
 type EquipmentOverviewNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -27,95 +30,64 @@ interface Equipment {
   nextMaintenance: string;
 }
 
+function mapCondition(log: EquipmentLog): 'Functional' | 'Needs Maintenance' | 'Faulty' {
+  if (log.condition_status === 'faulty') return log.resolved_at ? 'Needs Maintenance' : 'Faulty';
+  return 'Functional';
+}
+
+function guessCategory(name: string): string {
+  const n = name.toLowerCase();
+  if (n.includes('pump')) return 'Pumping';
+  if (n.includes('drill')) return 'Drilling';
+  if (n.includes('vent') || n.includes('fan')) return 'Ventilation';
+  if (n.includes('conv') || n.includes('belt')) return 'Transport';
+  return 'General';
+}
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const h = Math.floor(diff / 3600000);
+  if (h < 1) return 'Just now';
+  if (h < 24) return `${h} hour${h > 1 ? 's' : ''} ago`;
+  const d = Math.floor(h / 24);
+  return `${d} day${d > 1 ? 's' : ''} ago`;
+}
+
 const EquipmentOverview: React.FC = () => {
   const navigation = useNavigation<EquipmentOverviewNavigationProp>();
   const [selectedFilter, setSelectedFilter] = useState<
     'all' | 'functional' | 'maintenance' | 'faulty'
   >('all');
+  const [logs, setLogs] = useState<EquipmentLog[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Demo equipment data
-  const equipment: Equipment[] = [
-    {
-      id: 'PUMP-01',
-      name: 'Water Pump Unit 1',
-      category: 'Pumping',
-      condition: 'Functional',
-      location: 'Panel A-1',
-      responsiblePerson: 'Foreman Singh',
-      lastChecked: '2 hours ago',
-      nextMaintenance: '5 days',
-    },
-    {
-      id: 'DRILL-03',
-      name: 'Drill Machine 3',
-      category: 'Drilling',
-      condition: 'Needs Maintenance',
-      location: 'Panel A-3',
-      responsiblePerson: 'Overman Patil',
-      lastChecked: '4 hours ago',
-      nextMaintenance: 'Overdue',
-    },
-    {
-      id: 'VENT-02',
-      name: 'Ventilation Fan 2',
-      category: 'Ventilation',
-      condition: 'Faulty',
-      location: 'Main Tunnel',
-      responsiblePerson: 'Foreman Kumar',
-      lastChecked: '1 hour ago',
-      nextMaintenance: 'Immediate',
-    },
-    {
-      id: 'CONV-05',
-      name: 'Conveyor Belt 5',
-      category: 'Transport',
-      condition: 'Functional',
-      location: 'Section C',
-      responsiblePerson: 'Foreman Das',
-      lastChecked: '3 hours ago',
-      nextMaintenance: '12 days',
-    },
-    {
-      id: 'PUMP-03',
-      name: 'Water Pump Unit 3',
-      category: 'Pumping',
-      condition: 'Needs Maintenance',
-      location: 'Panel B-2',
-      responsiblePerson: 'Overman Sharma',
-      lastChecked: '5 hours ago',
-      nextMaintenance: '2 days',
-    },
-    {
-      id: 'DRILL-07',
-      name: 'Drill Machine 7',
-      category: 'Drilling',
-      condition: 'Functional',
-      location: 'Panel A-2',
-      responsiblePerson: 'Overman Patil',
-      lastChecked: '1 hour ago',
-      nextMaintenance: '8 days',
-    },
-    {
-      id: 'VENT-01',
-      name: 'Ventilation Fan 1',
-      category: 'Ventilation',
-      condition: 'Functional',
-      location: 'Section B',
-      responsiblePerson: 'Foreman Singh',
-      lastChecked: '2 hours ago',
-      nextMaintenance: '15 days',
-    },
-    {
-      id: 'CONV-02',
-      name: 'Conveyor Belt 2',
-      category: 'Transport',
-      condition: 'Needs Maintenance',
-      location: 'Panel B-1',
-      responsiblePerson: 'Overman Kumar',
-      lastChecked: '6 hours ago',
-      nextMaintenance: '1 day',
-    },
-  ];
+  useEffect(() => {
+    equipmentService.getEquipmentLogs()
+      .then(setLogs)
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  const equipment: Equipment[] = useMemo(() => {
+    const seen = new Set<string>();
+    return logs
+      .filter(l => {
+        const key = l.equipment_name;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map(l => ({
+        id: l.equipment_code ?? l.id.slice(0, 8).toUpperCase(),
+        name: l.equipment_name,
+        category: guessCategory(l.equipment_name),
+        condition: mapCondition(l),
+        location: l.section_id.slice(0, 8),
+        responsiblePerson: l.reported_by.slice(0, 8),
+        lastChecked: relativeTime(l.updated_at),
+        nextMaintenance: l.condition_status === 'faulty' && !l.resolved_at ? 'Immediate' : 'Scheduled',
+      }));
+  }, [logs]);
 
   const getConditionColor = (condition: Equipment['condition']) => {
     switch (condition) {
@@ -304,7 +276,9 @@ const EquipmentOverview: React.FC = () => {
         </View>
 
         {/* Equipment Cards */}
-        {filteredEquipment.length > 0 ? (
+        {isLoading ? (
+          <ActivityIndicator size="large" color="#1e3a5f" style={{ marginTop: 40 }} />
+        ) : filteredEquipment.length > 0 ? (
           <View style={styles.equipmentList}>
             {filteredEquipment.map(item => (
               <TouchableOpacity

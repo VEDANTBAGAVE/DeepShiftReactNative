@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -6,61 +6,78 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ScrollView,
+  RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
+import { incidentService } from '../../services/incidentService';
+import { userService } from '../../services/userService';
+import { useAuth } from '../../context/AuthContext';
+import { IncidentReport, User } from '../../types/database';
+
+interface DisplayIncident {
+  id: string;
+  title: string;
+  description: string;
+  severity: 'low' | 'medium' | 'high';
+  status: 'open' | 'resolved';
+  reportedBy: string;
+  reportedAt: string;
+  location: string;
+}
 
 type SectionIncidentsScreenNavigationProp =
   StackNavigationProp<RootStackParamList>;
 
-// Sample incident data for UI/UX preview
-const SAMPLE_INCIDENTS = [
-  {
-    id: '1',
-    title: 'Equipment Malfunction',
-    description: 'Drill-02 overheating during operation',
-    severity: 'high',
-    status: 'open',
-    reportedBy: 'Rajesh Kumar',
-    reportedAt: '2025-10-26T09:15:00',
-    location: 'Panel 5-A, Section 3',
-  },
-  {
-    id: '2',
-    title: 'Safety Hazard',
-    description: 'Loose roof bolts detected in tunnel section',
-    severity: 'critical',
-    status: 'investigating',
-    reportedBy: 'Amit Singh',
-    reportedAt: '2025-10-26T07:30:00',
-    location: 'Panel 5-A, Section 1',
-  },
-  {
-    id: '3',
-    title: 'Minor Injury',
-    description: 'Worker hand bruise from equipment handling',
-    severity: 'low',
-    status: 'resolved',
-    reportedBy: 'Vikram Patel',
-    reportedAt: '2025-10-25T14:45:00',
-    location: 'Panel 5-A, Section 2',
-  },
-  {
-    id: '4',
-    title: 'Water Seepage',
-    description: 'Excessive water accumulation in working area',
-    severity: 'medium',
-    status: 'open',
-    reportedBy: 'Suresh Yadav',
-    reportedAt: '2025-10-26T08:00:00',
-    location: 'Panel 5-A, Section 4',
-  },
-];
-
 const SectionIncidentsScreen: React.FC = () => {
   const navigation = useNavigation<SectionIncidentsScreenNavigationProp>();
+  const { user } = useAuth();
   const [filter, setFilter] = useState<'all' | 'open' | 'resolved'>('all');
+  const [isLoading, setIsLoading] = useState(false);
+  const [rawIncidents, setRawIncidents] = useState<IncidentReport[]>([]);
+  const [sectionUsers, setSectionUsers] = useState<User[]>([]);
+
+  const loadData = useCallback(async () => {
+    if (!user?.section_id) return;
+    setIsLoading(true);
+    try {
+      const [fetchedIncidents, fetchedUsers] = await Promise.all([
+        incidentService.getIncidents({ section_id: user.section_id }),
+        userService.getUsers({ section_id: user.section_id, is_active: true }),
+      ]);
+      setRawIncidents(fetchedIncidents);
+      setSectionUsers(fetchedUsers);
+    } catch (error) {
+      console.error('Failed to load incidents:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const usersMap = useMemo(
+    () => Object.fromEntries(sectionUsers.map(u => [u.id, u.name])),
+    [sectionUsers],
+  );
+
+  const incidents: DisplayIncident[] = useMemo(
+    () =>
+      rawIncidents.map(inc => ({
+        id: inc.id,
+        title: inc.title,
+        description: inc.description,
+        severity: inc.severity_level,
+        status: inc.is_resolved ? 'resolved' : 'open',
+        reportedBy: usersMap[inc.reported_by] ?? 'Staff',
+        reportedAt: inc.created_at,
+        location: inc.location_details ?? 'Mine Section',
+      })),
+    [rawIncidents, usersMap],
+  );
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -109,19 +126,15 @@ const SectionIncidentsScreen: React.FC = () => {
     }
   };
 
-  const filteredIncidents = SAMPLE_INCIDENTS.filter(incident => {
+  const filteredIncidents = incidents.filter(incident => {
     if (filter === 'all') return true;
     if (filter === 'open') return incident.status !== 'resolved';
     if (filter === 'resolved') return incident.status === 'resolved';
     return true;
   });
 
-  const openCount = SAMPLE_INCIDENTS.filter(
-    i => i.status !== 'resolved',
-  ).length;
-  const resolvedCount = SAMPLE_INCIDENTS.filter(
-    i => i.status === 'resolved',
-  ).length;
+  const openCount = incidents.filter(i => i.status !== 'resolved').length;
+  const resolvedCount = incidents.filter(i => i.status === 'resolved').length;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -140,7 +153,7 @@ const SectionIncidentsScreen: React.FC = () => {
       {/* Stats Bar */}
       <View style={styles.statsBar}>
         <View style={styles.statBox}>
-          <Text style={styles.statNumber}>{SAMPLE_INCIDENTS.length}</Text>
+          <Text style={styles.statNumber}>{incidents.length}</Text>
           <Text style={styles.statLabel}>Total</Text>
         </View>
         <View style={[styles.statBox, styles.statBoxBorder]}>
@@ -169,7 +182,7 @@ const SectionIncidentsScreen: React.FC = () => {
               filter === 'all' && styles.filterTabTextActive,
             ]}
           >
-            All ({SAMPLE_INCIDENTS.length})
+            All ({incidents.length})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -206,14 +219,18 @@ const SectionIncidentsScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollView}>
-        {/* Preview Notice */}
-        <View style={styles.previewNotice}>
-          <Text style={styles.previewIcon}>👁️</Text>
-          <Text style={styles.previewText}>
-            UI Preview: Sample incident data shown for design purposes
-          </Text>
-        </View>
+      <ScrollView
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl refreshing={isLoading} onRefresh={loadData} />
+        }
+      >
+        {incidents.length === 0 && !isLoading && (
+          <View style={styles.previewNotice}>
+            <Text style={styles.previewIcon}>📋</Text>
+            <Text style={styles.previewText}>No incidents reported for this section</Text>
+          </View>
+        )}
 
         {/* Incident List */}
         {filteredIncidents.map(incident => (

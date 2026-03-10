@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -22,7 +22,7 @@ type LoginScreenNavigationProp = StackNavigationProp<
 
 const LoginScreen: React.FC = () => {
   const navigation = useNavigation<LoginScreenNavigationProp>();
-  const { login } = useAuth();
+  const { login, isAuthenticated, isLoading, role } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -31,6 +31,18 @@ const LoginScreen: React.FC = () => {
     password: '',
     general: '',
   });
+
+  // Auto-redirect if already authenticated (e.g. session restored on app launch)
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      const dest: keyof RootStackParamList =
+        role === 'worker'  ? 'WorkerDashboard'  :
+        role === 'foreman' ? 'ForemanDashboard' :
+        role === 'overman' ? 'OvermanDashboard' :
+        role === 'manager' ? 'ManagerDashboard' : 'HomeScreen';
+      navigation.reset({ index: 0, routes: [{ name: dest }] });
+    }
+  }, [isAuthenticated, isLoading, role]);
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

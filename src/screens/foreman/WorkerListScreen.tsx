@@ -12,9 +12,10 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
-import { useForeman } from '../../context/ForemanContext';
-import { Worker, AttendanceStatus } from '../../types/worker';
+import { useForemanDashboard } from '../../hooks/useDashboard';
+import { User } from '../../types/database';
 
+type AttendanceStatus = 'present' | 'absent' | 'not-marked';
 type WorkerListNavigationProp = StackNavigationProp<RootStackParamList>;
 
 const STATUS_FILTERS: {
@@ -25,40 +26,42 @@ const STATUS_FILTERS: {
   { value: 'all', label: 'All', color: '#64748b' },
   { value: 'present', label: 'Present', color: '#10b981' },
   { value: 'absent', label: 'Absent', color: '#ef4444' },
-  { value: 'tardy', label: 'Tardy', color: '#f59e0b' },
   { value: 'not-marked', label: 'Not Marked', color: '#94a3b8' },
 ];
 
 const WorkerListScreen: React.FC = () => {
   const navigation = useNavigation<WorkerListNavigationProp>();
-  const { getWorkers, updateWorkerAttendance, bulkUpdateAttendance } =
-    useForeman();
+  const { workers, workerLogs, stats, markAttendance, bulkMarkAttendance, isLoading, refreshData } = useForemanDashboard();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<AttendanceStatus | 'all'>(
-    'all',
-  );
-  const [sectionFilter, setSectionFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<AttendanceStatus | 'all'>('all');
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
-  const [selectedWorkers, setSelectedWorkers] = useState<Set<string>>(
-    new Set(),
-  );
+  const [selectedWorkers, setSelectedWorkers] = useState<Set<string>>(new Set());
 
-  // Get filtered workers
-  const filteredWorkers = useMemo(() => {
-    return getWorkers({
-      section: sectionFilter === 'all' ? undefined : sectionFilter,
-      status: statusFilter === 'all' ? undefined : statusFilter,
-      search: searchQuery,
+  // Map workers + logs to display format
+  const workersWithAttendance = useMemo(() => {
+    return workers.map(w => {
+      const log = workerLogs.find(l => l.worker_id === w.id);
+      return { ...w, todayAttendance: (log?.attendance_status as AttendanceStatus) || 'not-marked' };
     });
-  }, [searchQuery, statusFilter, sectionFilter]);
+  }, [workers, workerLogs]);
 
-  // Get unique sections
-  const sections = useMemo(() => {
-    const allWorkers = getWorkers();
-    const uniqueSections = new Set(allWorkers.map(w => w.section));
-    return ['all', ...Array.from(uniqueSections)];
-  }, []);
+  const filteredWorkers = useMemo(() => {
+    return workersWithAttendance.filter(w => {
+      const matchesSearch = searchQuery === '' ||
+        w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        w.employee_code.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus = statusFilter === 'all' || w.todayAttendance === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [workersWithAttendance, searchQuery, statusFilter]);
+
+  const todayStats = useMemo(() => ({
+    total: stats.totalWorkers,
+    present: stats.workersPresent,
+    absent: stats.workersAbsent,
+    notMarked: stats.totalWorkers - stats.workersPresent - stats.workersAbsent,
+  }), [stats]);
 
   const toggleWorkerSelection = (workerId: string) => {
     const newSelection = new Set(selectedWorkers);
@@ -83,7 +86,6 @@ const WorkerListScreen: React.FC = () => {
       Alert.alert('No Selection', 'Please select workers first');
       return;
     }
-
     Alert.alert(
       'Bulk Update Attendance',
       `Mark ${selectedWorkers.size} worker(s) as ${status}?`,
@@ -92,11 +94,10 @@ const WorkerListScreen: React.FC = () => {
         {
           text: 'Confirm',
           onPress: async () => {
-            await bulkUpdateAttendance(Array.from(selectedWorkers), status);
-            Alert.alert(
-              'Success',
-              `${selectedWorkers.size} worker(s) marked as ${status}`,
+            await bulkMarkAttendance(
+              Array.from(selectedWorkers).map(id => ({ workerId: id, status: status as 'present' | 'absent' }))
             );
+            Alert.alert('Success', `${selectedWorkers.size} worker(s) marked as ${status}`);
             setIsMultiSelectMode(false);
             setSelectedWorkers(new Set());
           },
@@ -106,25 +107,24 @@ const WorkerListScreen: React.FC = () => {
   };
 
   const handleMarkPresent = async (workerId: string) => {
-    await updateWorkerAttendance(workerId, 'present');
+    await markAttendance(workerId, 'present');
     Alert.alert('Success', 'Worker marked as present');
   };
 
   const handleMarkAbsent = (workerId: string) => {
-    Alert.prompt(
+    Alert.alert(
       'Mark Absent',
-      'Optional reason for absence:',
+      'Mark this worker as absent?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Confirm',
-          onPress: async (reason?: string) => {
-            await updateWorkerAttendance(workerId, 'absent', reason);
+          onPress: async () => {
+            await markAttendance(workerId, 'absent');
             Alert.alert('Success', 'Worker marked as absent');
           },
         },
       ],
-      'plain-text',
     );
   };
 
@@ -149,8 +149,6 @@ const WorkerListScreen: React.FC = () => {
         return '#10b981';
       case 'absent':
         return '#ef4444';
-      case 'tardy':
-        return '#f59e0b';
       default:
         return '#94a3b8';
     }
@@ -169,22 +167,6 @@ const WorkerListScreen: React.FC = () => {
       minute: '2-digit',
     });
   };
-
-  // Calculate today's stats
-  const todayStats = useMemo(() => {
-    const allWorkers = getWorkers();
-    const present = allWorkers.filter(
-      w => w.todayAttendance === 'present',
-    ).length;
-    const absent = allWorkers.filter(
-      w => w.todayAttendance === 'absent',
-    ).length;
-    const tardy = allWorkers.filter(w => w.todayAttendance === 'tardy').length;
-    const notMarked = allWorkers.filter(
-      w => !w.todayAttendance || w.todayAttendance === 'not-marked',
-    ).length;
-    return { total: allWorkers.length, present, absent, tardy, notMarked };
-  }, []);
 
   // Handle long press to enter multi-select mode
   const handleLongPress = (workerId: string) => {
@@ -249,12 +231,6 @@ const WorkerListScreen: React.FC = () => {
             </Text>
           </View>
           <View style={styles.todayStatCard}>
-            <Text style={styles.todayStatValue}>{todayStats.tardy}</Text>
-            <Text style={[styles.todayStatLabel, { color: '#f59e0b' }]}>
-              Tardy
-            </Text>
-          </View>
-          <View style={styles.todayStatCard}>
             <Text style={styles.todayStatValue}>{todayStats.notMarked}</Text>
             <Text style={[styles.todayStatLabel, { color: '#94a3b8' }]}>
               Not Marked
@@ -316,32 +292,7 @@ const WorkerListScreen: React.FC = () => {
         ))}
       </ScrollView>
 
-      {/* Section Filter */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.sectionFilter}
-      >
-        {sections.map(section => (
-          <TouchableOpacity
-            key={section}
-            style={[
-              styles.sectionChip,
-              sectionFilter === section && styles.sectionChipActive,
-            ]}
-            onPress={() => setSectionFilter(section)}
-          >
-            <Text
-              style={[
-                styles.sectionChipText,
-                sectionFilter === section && styles.sectionChipTextActive,
-              ]}
-            >
-              {section === 'all' ? 'All Sections' : section}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {/* Section Filter removed - no section data in scope */}
 
       {/* Multi-Select Actions */}
       {isMultiSelectMode && (
@@ -444,45 +395,17 @@ const WorkerListScreen: React.FC = () => {
                 </View>
 
                 <Text style={styles.workerRole}>
-                  {worker.role} • {worker.employeeId}
+                  {worker.role} • {worker.employee_code}
                 </Text>
 
                 <View style={styles.workerStats}>
                   <View style={styles.workerStat}>
                     <Text style={styles.workerStatIcon}>📋</Text>
                     <Text style={styles.workerStatText}>
-                      {worker.openTasksCount} tasks
+                      {worker.section_id ? worker.section_id.slice(0, 8) : 'No section'}
                     </Text>
                   </View>
-                  {worker.recentIncidentsCount > 0 && (
-                    <View style={styles.workerStat}>
-                      <Text style={styles.workerStatIcon}>⚠️</Text>
-                      <Text style={styles.workerStatText}>
-                        {worker.recentIncidentsCount} incident(s)
-                      </Text>
-                    </View>
-                  )}
                 </View>
-
-                {/* Audit Stamp - Show when attendance was marked */}
-                {worker.attendanceMarkedAt &&
-                  worker.todayAttendance &&
-                  worker.todayAttendance !== 'not-marked' && (
-                    <View style={styles.auditStamp}>
-                      <Text style={styles.auditStampIcon}>✓</Text>
-                      <Text style={styles.auditStampText}>
-                        Marked{' '}
-                        {getStatusLabel(worker.todayAttendance).toLowerCase()}{' '}
-                        at {formatTime(worker.attendanceMarkedAt)}
-                      </Text>
-                    </View>
-                  )}
-
-                {worker.attendanceReason && (
-                  <Text style={styles.workerReason}>
-                    📝 {worker.attendanceReason}
-                  </Text>
-                )}
               </View>
 
               {!isMultiSelectMode && (

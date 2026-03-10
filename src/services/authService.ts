@@ -93,13 +93,18 @@ export const authService = {
    * Logout and clear session
    */
   logout: async (): Promise<void> => {
-    const { error } = await supabase.auth.signOut();
-
-    if (error) {
-      console.error('Error during logout:', error);
+    try {
+      if (supabase && supabase.auth) {
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+          console.error('Error during logout:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Error during signOut:', error);
     }
 
-    // Clear stored user data
+    // Clear stored user data regardless of supabase signout success
     await AsyncStorage.multiRemove([
       'user_id',
       'user_role',
@@ -117,34 +122,43 @@ export const authService = {
     user: User | null;
     role: UserRole | null;
   }> => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    try {
+      // Guard against supabase not being initialized
+      if (!supabase || !supabase.auth) {
+        console.warn('Supabase client not available');
+        return { isAuthenticated: false, user: null, role: null };
+      }
 
-    if (!session) {
+      const { data, error } = await supabase.auth.getSession();
+
+      if (error || !data?.session) {
+        return { isAuthenticated: false, user: null, role: null };
+      }
+
+      const userId = await AsyncStorage.getItem('user_id');
+      const userRole = (await AsyncStorage.getItem(
+        'user_role',
+      )) as UserRole | null;
+
+      if (userId) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', userId)
+          .single();
+
+        return {
+          isAuthenticated: true,
+          user: userData,
+          role: userRole,
+        };
+      }
+
+      return { isAuthenticated: true, user: null, role: null };
+    } catch (error) {
+      console.error('Error in checkAuthState:', error);
       return { isAuthenticated: false, user: null, role: null };
     }
-
-    const userId = await AsyncStorage.getItem('user_id');
-    const userRole = (await AsyncStorage.getItem(
-      'user_role',
-    )) as UserRole | null;
-
-    if (userId) {
-      const { data: userData } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      return {
-        isAuthenticated: true,
-        user: userData,
-        role: userRole,
-      };
-    }
-
-    return { isAuthenticated: true, user: null, role: null };
   },
 
   /**
@@ -175,9 +189,23 @@ export const authService = {
   },
 
   /**
+   * Listen to auth state changes
+   */
+  onAuthStateChange: (callback: (event: string, session: any) => void) => {
+    if (!supabase || !supabase.auth) {
+      console.warn('Supabase client not available for auth state changes');
+      return { data: { subscription: { unsubscribe: () => {} } } };
+    }
+    return supabase.auth.onAuthStateChange(callback);
+  },
+
+  /**
    * Reset password request
    */
   resetPassword: async (email: string): Promise<void> => {
+    if (!supabase || !supabase.auth) {
+      throw new Error('Supabase client not available');
+    }
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: 'deepshift://reset-password',
     });
@@ -191,6 +219,9 @@ export const authService = {
    * Update password
    */
   updatePassword: async (newPassword: string): Promise<void> => {
+    if (!supabase || !supabase.auth) {
+      throw new Error('Supabase client not available');
+    }
     const { error } = await supabase.auth.updateUser({
       password: newPassword,
     });
@@ -198,13 +229,6 @@ export const authService = {
     if (error) {
       throw new Error(error.message);
     }
-  },
-
-  /**
-   * Listen to auth state changes
-   */
-  onAuthStateChange: (callback: (event: string, session: any) => void) => {
-    return supabase.auth.onAuthStateChange(callback);
   },
 };
 

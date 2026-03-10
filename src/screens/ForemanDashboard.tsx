@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,8 +10,9 @@ import {
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
-import { useForeman } from '../context/ForemanContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../context/AuthContext';
+import { useForemanDashboard } from '../hooks/useDashboard';
 
 type ForemanDashboardNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -57,7 +58,8 @@ const FeatureCard: React.FC<FeatureCardProps> = ({
 
 const ForemanDashboard: React.FC = () => {
   const navigation = useNavigation<ForemanDashboardNavigationProp>();
-  const { getDashboardStats } = useForeman();
+  const { user, logout } = useAuth();
+  const { stats: dashStats, isLoading, refreshData } = useForemanDashboard();
   const [stats, setStats] = useState({
     totalWorkers: 0,
     presentWorkers: 0,
@@ -111,19 +113,34 @@ const ForemanDashboard: React.FC = () => {
     }
   }, []);
 
-  // Refresh stats when screen comes into focus
+  // Sync Supabase stats to local stats format
+  useEffect(() => {
+    const mapped = {
+      totalWorkers: dashStats.totalWorkers,
+      presentWorkers: dashStats.workersPresent,
+      absentWorkers: dashStats.workersAbsent,
+      attendancePercentage:
+        dashStats.totalWorkers > 0
+          ? Math.round((dashStats.workersPresent / dashStats.totalWorkers) * 100)
+          : 0,
+      openIncidents: dashStats.pendingIncidents,
+      pendingReports: dashStats.shiftsToday,
+      reopenedReports: 0,
+      unreadNotifications: dashStats.highSeverityIncidents,
+    };
+    setStats(mapped);
+    loadDeltas(mapped);
+  }, [dashStats, loadDeltas]);
+
+  // Refresh data when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      const refreshStats = () => {
-        const dashboardStats = getDashboardStats();
-        setStats(dashboardStats);
-        loadDeltas(dashboardStats);
-      };
-      refreshStats();
-    }, [getDashboardStats, loadDeltas]),
+      refreshData();
+    }, [refreshData]),
   );
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logout();
     navigation.navigate('HomeScreen');
   };
 

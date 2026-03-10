@@ -12,8 +12,13 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
-import { useWorker } from '../../context/WorkerContext';
-import { IncidentRecord, IncidentSeverity, Photo } from '../../types/worker';
+import { useAuth } from '../../context/AuthContext';
+import { incidentService } from '../../services/incidentService';
+import { shiftService } from '../../services/shiftService';
+import { IncidentType, SeverityLevel } from '../../types/database';
+
+type IncidentSeverity = 'low' | 'medium' | 'high';
+interface Photo { id: string; uri: string; timestamp: number; }
 
 type ReportIncidentNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -39,20 +44,13 @@ const AREAS = [
 
 const ReportIncidentScreen: React.FC = () => {
   const navigation = useNavigation<ReportIncidentNavigationProp>();
-  const { addIncident, shifts } = useWorker();
+  const { user } = useAuth();
 
   const [description, setDescription] = useState('');
   const [severity, setSeverity] = useState<IncidentSeverity>('low');
   const [area, setArea] = useState('Panel 5');
+  const [incidentType, setIncidentType] = useState<IncidentType>('other');
   const [photos, setPhotos] = useState<Photo[]>([]);
-  const [linkedShiftId, setLinkedShiftId] = useState<string | undefined>(
-    undefined,
-  );
-
-  // Get recent shifts for linking
-  const recentShifts = shifts
-    .filter(s => s.status === 'submitted' || s.status === 'draft')
-    .slice(0, 5);
 
   const handleAddPhoto = () => {
     // TODO: Implement image picker
@@ -107,48 +105,35 @@ const ReportIncidentScreen: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!validate()) {
+    if (!validate()) return;
+    if (!user?.section_id) {
+      Alert.alert('Error', 'No section assigned to your account.');
       return;
     }
-
-    const incident: IncidentRecord = {
-      id: `incident-${Date.now()}`,
-      description: description.trim(),
-      severity,
-      area,
-      photos,
-      linkedShiftId,
-      createdAt: Date.now(),
-    };
-
-    await addIncident(incident);
-
-    const linkedShift = linkedShiftId
-      ? shifts.find(s => s.id === linkedShiftId)
-      : null;
-
-    Alert.alert(
-      '✓ Incident Reported',
-      `Your ${severity} severity incident has been recorded.${
-        linkedShift
-          ? `\n\nLinked to shift: ${linkedShift.date} ${linkedShift.shiftType}`
-          : ''
-      }`,
-      [
-        {
-          text: 'View Shift',
-          onPress: () =>
-            linkedShiftId &&
-            navigation.navigate('ShiftDetailScreen', {
-              shiftId: linkedShiftId,
-            }),
-        },
-        {
-          text: 'Done',
-          onPress: () => navigation.navigate('WorkerDashboard'),
-        },
-      ],
-    );
+    try {
+      const shifts = await shiftService.getTodayShifts(user.section_id);
+      if (shifts.length === 0) {
+        Alert.alert('No Active Shift', 'No shift found for today in your section.');
+        return;
+      }
+      await incidentService.createIncident({
+        shift_id: shifts[0].id,
+        section_id: user.section_id,
+        incident_type: incidentType,
+        severity_level: severity as SeverityLevel,
+        title: description.trim().substring(0, 60),
+        description: description.trim(),
+        location_details: area,
+        reported_by: user.id,
+      });
+      Alert.alert(
+        '✓ Incident Reported',
+        `Your ${severity} severity incident has been recorded and sent to your Foreman.`,
+        [{ text: 'Done', onPress: () => navigation.navigate('WorkerDashboard') }],
+      );
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Failed to submit incident');
+    }
   };
 
   return (
@@ -298,51 +283,6 @@ const ReportIncidentScreen: React.FC = () => {
             </View>
           )}
         </View>
-
-        {/* Link to Shift (Optional) */}
-        {recentShifts.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.label}>🔗 Link to Shift (Optional)</Text>
-            <View style={styles.shiftList}>
-              <TouchableOpacity
-                style={[
-                  styles.shiftItem,
-                  !linkedShiftId && styles.shiftItemActive,
-                ]}
-                onPress={() => setLinkedShiftId(undefined)}
-              >
-                <Text
-                  style={[
-                    styles.shiftItemText,
-                    !linkedShiftId && styles.shiftItemTextActive,
-                  ]}
-                >
-                  None
-                </Text>
-              </TouchableOpacity>
-
-              {recentShifts.map(shift => (
-                <TouchableOpacity
-                  key={shift.id}
-                  style={[
-                    styles.shiftItem,
-                    linkedShiftId === shift.id && styles.shiftItemActive,
-                  ]}
-                  onPress={() => setLinkedShiftId(shift.id)}
-                >
-                  <Text
-                    style={[
-                      styles.shiftItemText,
-                      linkedShiftId === shift.id && styles.shiftItemTextActive,
-                    ]}
-                  >
-                    {shift.date} • {shift.shiftType} • {shift.area}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
 
         {/* Submit Button */}
         <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>

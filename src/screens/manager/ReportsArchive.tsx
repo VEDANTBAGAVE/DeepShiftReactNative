@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,10 +9,12 @@ import {
   TextInput,
   Modal,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
+import { useManagerDashboard } from '../../hooks/useDashboard';
 
 type ReportsArchiveNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -38,6 +40,7 @@ interface ArchiveRecord {
 
 const ReportsArchive: React.FC = () => {
   const navigation = useNavigation<ReportsArchiveNavigationProp>();
+  const { allShifts, isLoading } = useManagerDashboard();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<string>('All');
   const [selectedStatus, setSelectedStatus] = useState<
@@ -49,118 +52,41 @@ const ReportsArchive: React.FC = () => {
     null,
   );
 
-  // Demo archive records
-  const archiveRecords: ArchiveRecord[] = [
-    {
-      id: 'SR-001',
-      date: 'October 25, 2025',
-      shiftType: 'Morning',
-      area: 'Panel A-3',
-      overmanName: 'Rajesh Patil',
-      overmanId: 'OVM-105',
-      totalWorkers: 26,
-      presentWorkers: 24,
-      incidents: 2,
-      status: 'Approved',
-      approvedBy: 'Manager Admin',
-      approvedDate: 'October 25, 2025 14:30',
-      safetyScore: 92,
-      productionRate: 98,
-      remarks:
-        'Shift completed with minor delays due to equipment maintenance. Pump-03 requires immediate attention.',
-    },
-    {
-      id: 'SR-002',
-      date: 'October 25, 2025',
-      shiftType: 'Evening',
-      area: 'Panel B-1',
-      overmanName: 'Amit Sharma',
-      overmanId: 'OVM-112',
-      totalWorkers: 28,
-      presentWorkers: 28,
-      incidents: 0,
-      status: 'Approved',
-      approvedBy: 'Manager Admin',
-      approvedDate: 'October 25, 2025 22:45',
-      safetyScore: 100,
-      productionRate: 105,
-      remarks:
-        'Excellent shift with no incidents. All safety protocols followed. Target exceeded.',
-    },
-    {
-      id: 'SR-004',
-      date: 'October 26, 2025',
-      shiftType: 'Morning',
-      area: 'Panel A-2',
-      overmanName: 'Suresh Singh',
-      overmanId: 'FOR-045',
-      totalWorkers: 30,
-      presentWorkers: 30,
-      incidents: 0,
-      status: 'Approved',
-      approvedBy: 'Manager Admin',
-      approvedDate: 'October 26, 2025 14:15',
-      safetyScore: 98,
-      productionRate: 102,
-      remarks:
-        'Smooth operations throughout the shift. Equipment functioning optimally.',
-    },
-    {
-      id: 'SR-006',
-      date: 'October 27, 2025',
-      shiftType: 'Night',
-      area: 'Panel B-2',
-      overmanName: 'Amit Sharma',
-      overmanId: 'OVM-112',
-      totalWorkers: 28,
-      presentWorkers: 27,
-      incidents: 0,
-      status: 'Approved',
-      approvedBy: 'Manager Admin',
-      approvedDate: 'October 27, 2025 06:30',
-      safetyScore: 100,
-      productionRate: 110,
-      remarks: 'Outstanding performance. All targets met ahead of schedule.',
-    },
-    {
-      id: 'SR-OLD-045',
-      date: 'September 15, 2025',
-      shiftType: 'Morning',
-      area: 'Panel A-1',
-      overmanName: 'Vijay Kumar',
-      overmanId: 'OVM-108',
-      totalWorkers: 24,
-      presentWorkers: 22,
-      incidents: 1,
-      status: 'Archived',
-      approvedBy: 'Manager Admin',
-      approvedDate: 'September 15, 2025 14:20',
-      safetyScore: 94,
-      productionRate: 96,
-      remarks:
-        'Minor equipment malfunction resolved. One worker minor injury treated on-site.',
-    },
-    {
-      id: 'SR-OLD-032',
-      date: 'September 10, 2025',
-      shiftType: 'Evening',
-      area: 'Section C',
-      overmanName: 'Ramesh Das',
-      overmanId: 'FOR-032',
-      totalWorkers: 20,
-      presentWorkers: 19,
-      incidents: 0,
-      status: 'Archived',
-      approvedBy: 'Manager Admin',
-      approvedDate: 'September 10, 2025 22:10',
-      safetyScore: 96,
-      productionRate: 100,
-      remarks:
-        'Standard operations. All procedures followed as per guidelines.',
-    },
-  ];
+  const archiveRecords: ArchiveRecord[] = useMemo(() =>
+    allShifts
+      .filter(s => s.status === 'approved' || s.status === 'archived')
+      .map(s => {
+        const shiftLabel = s.shift_type.charAt(0).toUpperCase() + s.shift_type.slice(1) as 'Morning' | 'Evening' | 'Night';
+        const dateObj = new Date(s.shift_date);
+        return {
+          id: s.id.slice(0, 8).toUpperCase(),
+          date: dateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+          shiftType: shiftLabel,
+          area: s.section_id.slice(0, 8),
+          overmanName: s.overman_id.slice(0, 8),
+          overmanId: s.overman_id.slice(0, 8).toUpperCase(),
+          totalWorkers: 0,
+          presentWorkers: 0,
+          incidents: 0,
+          status: (s.status === 'archived' ? 'Archived' : 'Approved') as 'Approved' | 'Archived',
+          approvedBy: s.approved_by ? s.approved_by.slice(0, 8) : 'Manager',
+          approvedDate: s.approved_at
+            ? new Date(s.approved_at).toLocaleString()
+            : s.submitted_at ? new Date(s.submitted_at).toLocaleString() : 'N/A',
+          safetyScore: 100,
+          productionRate: 100,
+          remarks: s.handover_notes ?? 'No remarks.',
+        };
+      }),
+  [allShifts]);
 
-  const months = ['All', 'October 2025', 'September 2025', 'August 2025'];
+  const months = useMemo(() => {
+    const unique = new Set(archiveRecords.map(r => {
+      const parts = r.date.split(' ');
+      return parts.length >= 3 ? `${parts[0]} ${parts[2]}` : r.date;
+    }));
+    return ['All', ...Array.from(unique)];
+  }, [archiveRecords]);
 
   const filteredRecords = archiveRecords.filter(record => {
     const matchesSearch =

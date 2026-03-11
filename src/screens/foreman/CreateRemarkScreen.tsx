@@ -13,6 +13,9 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
 import { useForemanDashboard } from '../../hooks/useDashboard';
+import { useAuth } from '../../context/AuthContext';
+import { remarkService } from '../../services/remarkService';
+import { notificationService } from '../../services/notificationService';
 
 type CreateRemarkScreenRouteProp = RouteProp<
   RootStackParamList,
@@ -27,6 +30,7 @@ const CreateRemarkScreen: React.FC = () => {
   const route = useRoute<CreateRemarkScreenRouteProp>();
   const { workerId } = route.params;
   const { workers } = useForemanDashboard();
+  const { user } = useAuth();
 
   const worker = workers.find(w => w.id === workerId) ?? null;
   const [message, setMessage] = useState('');
@@ -40,7 +44,10 @@ const CreateRemarkScreen: React.FC = () => {
       return;
     }
     if (message.length < 10) {
-      Alert.alert('Validation Error', 'Remark must be at least 10 characters long');
+      Alert.alert(
+        'Validation Error',
+        'Remark must be at least 10 characters long',
+      );
       return;
     }
     if (message.length > 500) {
@@ -49,13 +56,33 @@ const CreateRemarkScreen: React.FC = () => {
     }
 
     setIsSubmitting(true);
-    // Remarks feature requires a database table — coming soon
-    setTimeout(() => {
-      setIsSubmitting(false);
-      Alert.alert('Coming Soon', 'Remark submission will be available once the remarks table is added.', [
+    try {
+      await remarkService.createRemark(
+        user!.id,
+        workerId,
+        message.trim(),
+        severity,
+        requiresAction,
+      );
+
+      // Also send a notification to the worker
+      await notificationService.createNotification({
+        user_id: workerId,
+        type: 'remark',
+        title: `${
+          severity === 'warning' ? '⚠️ Warning' : 'ℹ️ Info'
+        } remark from ${user?.name ?? 'Foreman'}`,
+        body: message.trim(),
+      });
+
+      Alert.alert('Sent', 'Remark has been sent to the worker.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
-    }, 300);
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Failed to send remark.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

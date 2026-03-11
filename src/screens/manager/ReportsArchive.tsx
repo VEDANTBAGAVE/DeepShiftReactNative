@@ -10,6 +10,8 @@ import {
   Modal,
   Dimensions,
   ActivityIndicator,
+  Share,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -52,39 +54,52 @@ const ReportsArchive: React.FC = () => {
     null,
   );
 
-  const archiveRecords: ArchiveRecord[] = useMemo(() =>
-    allShifts
-      .filter(s => s.status === 'approved' || s.status === 'archived')
-      .map(s => {
-        const shiftLabel = s.shift_type.charAt(0).toUpperCase() + s.shift_type.slice(1) as 'Morning' | 'Evening' | 'Night';
-        const dateObj = new Date(s.shift_date);
-        return {
-          id: s.id.slice(0, 8).toUpperCase(),
-          date: dateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-          shiftType: shiftLabel,
-          area: s.section_id.slice(0, 8),
-          overmanName: s.overman_id.slice(0, 8),
-          overmanId: s.overman_id.slice(0, 8).toUpperCase(),
-          totalWorkers: 0,
-          presentWorkers: 0,
-          incidents: 0,
-          status: (s.status === 'archived' ? 'Archived' : 'Approved') as 'Approved' | 'Archived',
-          approvedBy: s.approved_by ? s.approved_by.slice(0, 8) : 'Manager',
-          approvedDate: s.approved_at
-            ? new Date(s.approved_at).toLocaleString()
-            : s.submitted_at ? new Date(s.submitted_at).toLocaleString() : 'N/A',
-          safetyScore: 100,
-          productionRate: 100,
-          remarks: s.handover_notes ?? 'No remarks.',
-        };
-      }),
-  [allShifts]);
+  const archiveRecords: ArchiveRecord[] = useMemo(
+    () =>
+      allShifts
+        .filter(s => s.status === 'approved' || s.status === 'archived')
+        .map(s => {
+          const shiftLabel = (s.shift_type.charAt(0).toUpperCase() +
+            s.shift_type.slice(1)) as 'Morning' | 'Evening' | 'Night';
+          const dateObj = new Date(s.shift_date);
+          return {
+            id: s.id.slice(0, 8).toUpperCase(),
+            date: dateObj.toLocaleDateString('en-US', {
+              month: 'long',
+              day: 'numeric',
+              year: 'numeric',
+            }),
+            shiftType: shiftLabel,
+            area: s.section_id.slice(0, 8),
+            overmanName: s.overman_id.slice(0, 8),
+            overmanId: s.overman_id.slice(0, 8).toUpperCase(),
+            totalWorkers: 0,
+            presentWorkers: 0,
+            incidents: 0,
+            status: (s.status === 'archived' ? 'Archived' : 'Approved') as
+              | 'Approved'
+              | 'Archived',
+            approvedBy: s.approved_by ? s.approved_by.slice(0, 8) : 'Manager',
+            approvedDate: s.approved_at
+              ? new Date(s.approved_at).toLocaleString()
+              : s.submitted_at
+              ? new Date(s.submitted_at).toLocaleString()
+              : 'N/A',
+            safetyScore: 100,
+            productionRate: 100,
+            remarks: s.handover_notes ?? 'No remarks.',
+          };
+        }),
+    [allShifts],
+  );
 
   const months = useMemo(() => {
-    const unique = new Set(archiveRecords.map(r => {
-      const parts = r.date.split(' ');
-      return parts.length >= 3 ? `${parts[0]} ${parts[2]}` : r.date;
-    }));
+    const unique = new Set(
+      archiveRecords.map(r => {
+        const parts = r.date.split(' ');
+        return parts.length >= 3 ? `${parts[0]} ${parts[2]}` : r.date;
+      }),
+    );
     return ['All', ...Array.from(unique)];
   }, [archiveRecords]);
 
@@ -128,15 +143,64 @@ const ReportsArchive: React.FC = () => {
     setExportModalVisible(true);
   };
 
-  const handleDownloadPDF = () => {
-    console.log('Downloading PDF for:', selectedRecord?.id);
-    // TODO: Implement PDF generation/download
+  const handleDownloadPDF = async () => {
+    if (!selectedRecord) return;
+    const r = selectedRecord;
+    const report = [
+      `SHIFT REPORT — ${r.id}`,
+      `Date: ${r.date}`,
+      `Shift: ${r.shiftType}`,
+      `Area: ${r.area}`,
+      `Overman: ${r.overmanName} (${r.overmanId})`,
+      `Workers: ${r.presentWorkers}/${r.totalWorkers} present`,
+      `Incidents: ${r.incidents}`,
+      `Status: ${r.status}`,
+      `Approved by: ${r.approvedBy} on ${r.approvedDate}`,
+      `Safety Score: ${r.safetyScore}%`,
+      `Production Rate: ${r.productionRate}%`,
+      `Remarks: ${r.remarks}`,
+    ].join('\n');
+
+    try {
+      await Share.share({
+        title: `Shift Report ${r.id}`,
+        message: report,
+      });
+    } catch {
+      Alert.alert('Error', 'Could not share report.');
+    }
     setExportModalVisible(false);
   };
 
-  const handleExportExcel = () => {
-    console.log('Exporting to Excel:', selectedRecord?.id);
-    // TODO: Implement Excel export
+  const handleExportExcel = async () => {
+    // Generate CSV data for all filtered records
+    const header =
+      'ID,Date,Shift,Area,Overman,Total Workers,Present,Incidents,Status,Safety Score,Production Rate';
+    const rows = filteredRecords.map(r =>
+      [
+        r.id,
+        r.date,
+        r.shiftType,
+        r.area,
+        r.overmanName,
+        r.totalWorkers,
+        r.presentWorkers,
+        r.incidents,
+        r.status,
+        r.safetyScore,
+        r.productionRate,
+      ].join(','),
+    );
+    const csv = [header, ...rows].join('\n');
+
+    try {
+      await Share.share({
+        title: 'Reports Archive (CSV)',
+        message: csv,
+      });
+    } catch {
+      Alert.alert('Error', 'Could not share CSV data.');
+    }
     setExportModalVisible(false);
   };
 

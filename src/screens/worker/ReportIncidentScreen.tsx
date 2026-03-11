@@ -8,6 +8,7 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -16,9 +17,14 @@ import { useAuth } from '../../context/AuthContext';
 import { incidentService } from '../../services/incidentService';
 import { shiftService } from '../../services/shiftService';
 import { IncidentType, SeverityLevel } from '../../types/database';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 
 type IncidentSeverity = 'low' | 'medium' | 'high';
-interface Photo { id: string; uri: string; timestamp: number; }
+interface Photo {
+  id: string;
+  uri: string;
+  timestamp: number;
+}
 
 type ReportIncidentNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -53,26 +59,65 @@ const ReportIncidentScreen: React.FC = () => {
   const [photos, setPhotos] = useState<Photo[]>([]);
 
   const handleAddPhoto = () => {
-    // TODO: Implement image picker
-    // For now, add placeholder
-    Alert.alert(
-      'Photo Capture',
-      'Camera/Gallery picker will be implemented here',
-      [
-        {
-          text: 'Add Demo Photo',
-          onPress: () => {
-            const demoPhoto: Photo = {
-              id: `photo-${Date.now()}`,
-              uri: 'demo-photo-uri',
-              timestamp: Date.now(),
-            };
-            setPhotos([...photos, demoPhoto]);
-          },
+    Alert.alert('Add Photo', 'Choose a source', [
+      {
+        text: 'Camera',
+        onPress: () => {
+          launchCamera(
+            {
+              mediaType: 'photo',
+              quality: 0.7,
+              maxWidth: 1280,
+              maxHeight: 1280,
+              saveToPhotos: false,
+            },
+            response => {
+              if (response.didCancel || response.errorCode) return;
+              const asset = response.assets?.[0];
+              if (asset?.uri) {
+                setPhotos(prev => [
+                  ...prev,
+                  {
+                    id: `photo-${Date.now()}`,
+                    uri: asset.uri!,
+                    timestamp: Date.now(),
+                  },
+                ]);
+              }
+            },
+          );
         },
-        { text: 'Cancel', style: 'cancel' },
-      ],
-    );
+      },
+      {
+        text: 'Gallery',
+        onPress: () => {
+          launchImageLibrary(
+            {
+              mediaType: 'photo',
+              quality: 0.7,
+              maxWidth: 1280,
+              maxHeight: 1280,
+              selectionLimit: 1,
+            },
+            response => {
+              if (response.didCancel || response.errorCode) return;
+              const asset = response.assets?.[0];
+              if (asset?.uri) {
+                setPhotos(prev => [
+                  ...prev,
+                  {
+                    id: `photo-${Date.now()}`,
+                    uri: asset.uri!,
+                    timestamp: Date.now(),
+                  },
+                ]);
+              }
+            },
+          );
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   const handleRemovePhoto = (id: string) => {
@@ -113,7 +158,10 @@ const ReportIncidentScreen: React.FC = () => {
     try {
       const shifts = await shiftService.getTodayShifts(user.section_id);
       if (shifts.length === 0) {
-        Alert.alert('No Active Shift', 'No shift found for today in your section.');
+        Alert.alert(
+          'No Active Shift',
+          'No shift found for today in your section.',
+        );
         return;
       }
       await incidentService.createIncident({
@@ -129,7 +177,12 @@ const ReportIncidentScreen: React.FC = () => {
       Alert.alert(
         '✓ Incident Reported',
         `Your ${severity} severity incident has been recorded and sent to your Foreman.`,
-        [{ text: 'Done', onPress: () => navigation.navigate('WorkerDashboard') }],
+        [
+          {
+            text: 'Done',
+            onPress: () => navigation.navigate('WorkerDashboard'),
+          },
+        ],
       );
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Failed to submit incident');
@@ -267,11 +320,11 @@ const ReportIncidentScreen: React.FC = () => {
             <View style={styles.photoList}>
               {photos.map((photo, index) => (
                 <View key={photo.id} style={styles.photoItem}>
-                  <View style={styles.photoPlaceholder}>
-                    <Text style={styles.photoPlaceholderText}>
-                      Photo {index + 1}
-                    </Text>
-                  </View>
+                  <Image
+                    source={{ uri: photo.uri }}
+                    style={styles.photoThumb}
+                    resizeMode="cover"
+                  />
                   <TouchableOpacity
                     style={styles.removePhotoButton}
                     onPress={() => handleRemovePhoto(photo.id)}
@@ -486,18 +539,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#cbd5e1',
   },
-  photoPlaceholder: {
+  photoThumb: {
     flex: 1,
-    paddingVertical: 20,
-    backgroundColor: '#e2e8f0',
+    height: 90,
     borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoPlaceholderText: {
-    fontSize: 14,
-    color: '#64748b',
-    fontWeight: '600',
+    backgroundColor: '#e2e8f0',
   },
   removePhotoButton: {
     marginLeft: 12,

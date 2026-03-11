@@ -40,6 +40,7 @@ export type RootStackParamList = {
   SectionSummaryScreen: undefined;
   ReviewSectionReportScreen: { sectionId?: string; reportId?: string };
   RemarksPanelScreen: undefined;
+  OvermanProfileScreen: undefined;
 
   // Manager module screens
   ShiftReportsOverview: undefined;

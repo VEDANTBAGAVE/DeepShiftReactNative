@@ -1,6 +1,9 @@
 import React, { useEffect } from 'react';
 import { View, ActivityIndicator, Text } from 'react-native';
-import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  useNavigationContainerRef,
+} from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { RootStackParamList } from './types';
 import { useAuth } from '../context/AuthContext';
@@ -43,6 +46,7 @@ import SafetyOverviewScreen from '../screens/overman/SafetyOverviewScreen';
 import SectionSummaryScreen from '../screens/overman/SectionSummaryScreen';
 import ReviewSectionReportScreen from '../screens/overman/ReviewSectionReportScreen';
 import CreateShiftLogScreen from '../screens/overman/CreateShiftLogScreen';
+import OvermanProfileScreen from '../screens/overman/OvermanProfileScreen';
 import SubmittedLogsScreen from '../screens/overman/SubmittedLogsScreen';
 import RemarksPanelScreen from '../screens/overman/RemarksPanelScreen';
 
@@ -70,9 +74,25 @@ const AppNavigator = () => {
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1e3a5f' }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: '#1e3a5f',
+        }}
+      >
         <ActivityIndicator size="large" color="#f59e0b" />
-        <Text style={{ color: '#fff', marginTop: 16, fontSize: 16, fontWeight: '600' }}>Loading DeepShift...</Text>
+        <Text
+          style={{
+            color: '#fff',
+            marginTop: 16,
+            fontSize: 16,
+            fontWeight: '600',
+          }}
+        >
+          Loading DeepShift...
+        </Text>
       </View>
     );
   }
@@ -80,11 +100,16 @@ const AppNavigator = () => {
   const getInitialRoute = (): keyof RootStackParamList => {
     if (!isAuthenticated) return 'LoginScreen';
     switch (user?.role) {
-      case 'worker':  return 'WorkerDashboard';
-      case 'foreman': return 'ForemanDashboard';
-      case 'overman': return 'OvermanDashboard';
-      case 'manager': return 'ManagerDashboard';
-      default:        return 'LoginScreen';
+      case 'worker':
+        return 'WorkerDashboard';
+      case 'foreman':
+        return 'ForemanDashboard';
+      case 'overman':
+        return 'OvermanDashboard';
+      case 'manager':
+        return 'ManagerDashboard';
+      default:
+        return 'LoginScreen';
     }
   };
 
@@ -175,6 +200,10 @@ const AppNavigator = () => {
         />
 
         {/* Overman module screens */}
+        <Stack.Screen
+          name="OvermanProfileScreen"
+          component={OvermanProfileScreen}
+        />
         <Stack.Screen
           name="SectionReportsScreen"
           component={SectionReportsScreen}

@@ -548,5 +548,150 @@ GRANT INSERT ON audit_logs TO authenticated;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 
 -- ============================================
+-- TABLE: tasks
+-- ============================================
+
+CREATE TYPE task_status AS ENUM ('pending', 'in_progress', 'completed', 'cancelled');
+CREATE TYPE task_priority AS ENUM ('low', 'normal', 'high');
+CREATE TYPE task_category AS ENUM ('safety', 'maintenance', 'inspection', 'production', 'other');
+
+CREATE TABLE tasks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title VARCHAR(100) NOT NULL,
+    instructions TEXT,
+    category task_category NOT NULL DEFAULT 'other',
+    priority task_priority NOT NULL DEFAULT 'normal',
+    section_id UUID NOT NULL REFERENCES sections(id) ON DELETE RESTRICT,
+    shift_id UUID REFERENCES shifts(id) ON DELETE SET NULL,
+    created_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    due_date DATE,
+    status task_status NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE tasks IS 'Tasks assigned by foremen to workers';
+
+-- Indexes
+CREATE INDEX idx_tasks_section_id ON tasks(section_id);
+CREATE INDEX idx_tasks_created_by ON tasks(created_by);
+CREATE INDEX idx_tasks_status ON tasks(status);
+CREATE INDEX idx_tasks_due_date ON tasks(due_date);
+
+-- ============================================
+-- TABLE: task_assignments
+-- ============================================
+
+CREATE TABLE task_assignments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    worker_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    UNIQUE(task_id, worker_id)
+);
+
+COMMENT ON TABLE task_assignments IS 'Workers assigned to specific tasks';
+
+-- Indexes
+CREATE INDEX idx_task_assignments_task_id ON task_assignments(task_id);
+CREATE INDEX idx_task_assignments_worker_id ON task_assignments(worker_id);
+
+-- ============================================
+-- TABLE: notifications
+-- ============================================
+
+CREATE TYPE notification_type AS ENUM ('remark', 'report_status', 'incident', 'safety', 'task');
+
+CREATE TABLE notifications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type notification_type NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    body TEXT,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    related_entity_id UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE notifications IS 'In-app notifications for workers and foremen';
+
+-- Indexes
+CREATE INDEX idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX idx_notifications_is_read ON notifications(is_read);
+CREATE INDEX idx_notifications_type ON notifications(type);
+CREATE INDEX idx_notifications_created_at ON notifications(created_at);
+
+-- Enable RLS
+ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE task_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow all for development" ON tasks FOR ALL USING (true);
+CREATE POLICY "Allow all for development" ON task_assignments FOR ALL USING (true);
+CREATE POLICY "Allow all for development" ON notifications FOR ALL USING (true);
+
+GRANT INSERT, UPDATE, DELETE ON tasks, task_assignments, notifications TO authenticated;
+GRANT SELECT ON tasks, task_assignments, notifications TO anon, authenticated;
+
+-- ============================================
+-- TABLE: messages
+-- ============================================
+
+CREATE TABLE messages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    receiver_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE messages IS 'Direct messages between managers and overmen';
+
+-- Indexes
+CREATE INDEX idx_messages_sender_id ON messages(sender_id);
+CREATE INDEX idx_messages_receiver_id ON messages(receiver_id);
+CREATE INDEX idx_messages_created_at ON messages(created_at DESC);
+
+-- Enable RLS
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for development" ON messages FOR ALL USING (true);
+
+GRANT INSERT, UPDATE, DELETE ON messages TO authenticated;
+GRANT SELECT ON messages TO anon, authenticated;
+
+-- ============================================
+-- TABLE: remarks
+-- ============================================
+
+CREATE TYPE remark_severity AS ENUM ('info', 'warning');
+
+CREATE TABLE remarks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    foreman_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    worker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    severity remark_severity NOT NULL DEFAULT 'info',
+    requires_action BOOLEAN NOT NULL DEFAULT FALSE,
+    acknowledged_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE remarks IS 'Foreman remarks/feedback directed at individual workers';
+
+-- Indexes
+CREATE INDEX idx_remarks_foreman_id ON remarks(foreman_id);
+CREATE INDEX idx_remarks_worker_id ON remarks(worker_id);
+CREATE INDEX idx_remarks_created_at ON remarks(created_at DESC);
+
+-- Enable RLS
+ALTER TABLE remarks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for development" ON remarks FOR ALL USING (true);
+
+GRANT INSERT, UPDATE, DELETE ON remarks TO authenticated;
+GRANT SELECT ON remarks TO anon, authenticated;
+
+-- ============================================
 -- END OF SCHEMA
 -- ============================================

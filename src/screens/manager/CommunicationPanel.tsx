@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,177 +9,123 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
+import { useAuth } from '../../context/AuthContext';
+import { userService } from '../../services/userService';
+import { messageService, DBMessage } from '../../services/messageService';
+import { User } from '../../types/database';
 
 type CommunicationPanelNavigationProp = StackNavigationProp<RootStackParamList>;
 
-interface Message {
-  id: string;
-  sender: 'Manager' | 'Overman';
-  senderName: string;
-  text: string;
-  timestamp: string;
-  status?: 'sent' | 'delivered' | 'read';
-}
-
-interface Conversation {
-  id: string;
-  overmanName: string;
-  overmanId: string;
-  lastMessage: string;
-  unreadCount: number;
-  timestamp: string;
-  messages: Message[];
-}
-
 const CommunicationPanel: React.FC = () => {
   const navigation = useNavigation<CommunicationPanelNavigationProp>();
-  const [selectedConversation, setSelectedConversation] = useState<
-    string | null
-  >(null);
+  const { user } = useAuth();
+
+  const [peers, setPeers] = useState<User[]>([]);
+  const [messages, setMessages] = useState<DBMessage[]>([]);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [lastMessages, setLastMessages] = useState<Record<string, { text: string; time: string }>>({});
+  const [selectedPeerId, setSelectedPeerId] = useState<string | null>(null);
   const [messageText, setMessageText] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [sending, setSending] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
-  // Demo conversations data
-  const conversations: Conversation[] = [
-    {
-      id: 'conv-1',
-      overmanName: 'Rajesh Patil',
-      overmanId: 'OVM-105',
-      lastMessage: 'Acknowledged – corrective action in progress',
-      unreadCount: 0,
-      timestamp: '2 hours ago',
-      messages: [
-        {
-          id: 'msg-1',
-          sender: 'Manager',
-          senderName: 'Manager',
-          text: 'Please ensure gas level below 1% before next shift',
-          timestamp: '10:30 AM',
-          status: 'read',
-        },
-        {
-          id: 'msg-2',
-          sender: 'Overman',
-          senderName: 'Rajesh Patil',
-          text: 'Acknowledged – corrective action in progress',
-          timestamp: '10:45 AM',
-          status: 'delivered',
-        },
-      ],
-    },
-    {
-      id: 'conv-2',
-      overmanName: 'Amit Sharma',
-      overmanId: 'OVM-112',
-      lastMessage: 'Thank you for the feedback',
-      unreadCount: 2,
-      timestamp: '4 hours ago',
-      messages: [
-        {
-          id: 'msg-3',
-          sender: 'Manager',
-          senderName: 'Manager',
-          text: 'Great work on maintaining safety standards this week. Keep it up!',
-          timestamp: '8:15 AM',
-          status: 'read',
-        },
-        {
-          id: 'msg-4',
-          sender: 'Overman',
-          senderName: 'Amit Sharma',
-          text: 'Thank you for the feedback',
-          timestamp: '8:20 AM',
-          status: 'delivered',
-        },
-        {
-          id: 'msg-5',
-          sender: 'Overman',
-          senderName: 'Amit Sharma',
-          text: 'We will continue to maintain these standards',
-          timestamp: '8:21 AM',
-          status: 'delivered',
-        },
-      ],
-    },
-    {
-      id: 'conv-3',
-      overmanName: 'Vijay Kumar',
-      overmanId: 'OVM-108',
-      lastMessage: 'Equipment inspection completed',
-      unreadCount: 1,
-      timestamp: '6 hours ago',
-      messages: [
-        {
-          id: 'msg-6',
-          sender: 'Manager',
-          senderName: 'Manager',
-          text: 'Please conduct equipment inspection in Section A-2 today',
-          timestamp: '6:00 AM',
-          status: 'read',
-        },
-        {
-          id: 'msg-7',
-          sender: 'Overman',
-          senderName: 'Vijay Kumar',
-          text: 'Equipment inspection completed',
-          timestamp: '6:30 AM',
-          status: 'delivered',
-        },
-      ],
-    },
-    {
-      id: 'conv-4',
-      overmanName: 'Suresh Singh',
-      overmanId: 'FOR-045',
-      lastMessage: 'Will coordinate with maintenance team',
-      unreadCount: 0,
-      timestamp: 'Yesterday',
-      messages: [
-        {
-          id: 'msg-8',
-          sender: 'Manager',
-          senderName: 'Manager',
-          text: 'Pump-03 needs urgent maintenance. Please prioritize this.',
-          timestamp: 'Yesterday 4:30 PM',
-          status: 'read',
-        },
-        {
-          id: 'msg-9',
-          sender: 'Overman',
-          senderName: 'Suresh Singh',
-          text: 'Will coordinate with maintenance team',
-          timestamp: 'Yesterday 5:00 PM',
-          status: 'delivered',
-        },
-      ],
-    },
-  ];
+  const selectedPeer = peers.find(p => p.id === selectedPeerId) ?? null;
+  const totalUnread = Object.values(unreadCounts).reduce((s, n) => s + n, 0);
 
-  const selectedConv = conversations.find(c => c.id === selectedConversation);
-  const totalUnread = conversations.reduce(
-    (sum, conv) => sum + conv.unreadCount,
-    0,
-  );
+  const loadPeers = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const overmen = await userService.getUsers({ role: 'overman', is_active: true });
+      setPeers(overmen);
 
-  const handleSendMessage = () => {
-    if (messageText.trim() && selectedConversation) {
-      console.log(
-        'Sending message:',
-        messageText,
-        'to conversation:',
-        selectedConversation,
+      // Load unread counts + last message preview for each peer in parallel
+      const counts: Record<string, number> = {};
+      const lasts: Record<string, { text: string; time: string }> = {};
+      await Promise.all(
+        overmen.map(async peer => {
+          const [count, msgs] = await Promise.all([
+            messageService.getUnreadCount(peer.id, user.id),
+            messageService.getMessages(user.id, peer.id),
+          ]);
+          counts[peer.id] = count;
+          if (msgs.length > 0) {
+            const last = msgs[msgs.length - 1];
+            lasts[peer.id] = {
+              text: last.content,
+              time: new Date(last.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            };
+          }
+        }),
       );
-      // TODO: API call to send message
-      setMessageText('');
+      setUnreadCounts(counts);
+      setLastMessages(lasts);
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadPeers();
+  }, [loadPeers]);
+
+  const loadMessages = useCallback(async (peerId: string) => {
+    if (!user) return;
+    setLoadingMessages(true);
+    try {
+      const msgs = await messageService.getMessages(user.id, peerId);
+      setMessages(msgs);
+      // Mark peer's messages as read
+      await messageService.markRead(peerId, user.id);
+      setUnreadCounts(prev => ({ ...prev, [peerId]: 0 }));
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 100);
+    } finally {
+      setLoadingMessages(false);
+    }
+  }, [user]);
+
+  const handleSelectPeer = (peerId: string) => {
+    setSelectedPeerId(peerId);
+    setMessages([]);
+    loadMessages(peerId);
+  };
+
+  const handleSendMessage = async () => {
+    if (!messageText.trim() || !selectedPeerId || !user || sending) return;
+    const text = messageText.trim();
+    setMessageText('');
+    setSending(true);
+    try {
+      const msg = await messageService.sendMessage(user.id, selectedPeerId, text);
+      setMessages(prev => [...prev, msg]);
+      setLastMessages(prev => ({
+        ...prev,
+        [selectedPeerId]: {
+          text,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        },
+      }));
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+    } catch {
+      setMessageText(text); // restore on error
+    } finally {
+      setSending(false);
     }
   };
 
   const handleBack = () => {
     navigation.goBack();
   };
+
+  const getInitials = (name: string) =>
+    name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -190,7 +136,7 @@ const CommunicationPanel: React.FC = () => {
           onPress={handleBack}
           activeOpacity={0.7}
         >
-          <Text style={styles.backButtonText}>←</Text>
+          <Text style={styles.backButtonText}>â†</Text>
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitle}>Communication Panel</Text>
@@ -207,67 +153,62 @@ const CommunicationPanel: React.FC = () => {
         {/* Conversations List */}
         <View style={styles.conversationsList}>
           <Text style={styles.sectionTitle}>Conversations</Text>
-          <ScrollView
-            style={styles.conversationsScroll}
-            showsVerticalScrollIndicator={false}
-          >
-            {conversations.map(conv => (
-              <TouchableOpacity
-                key={conv.id}
-                style={[
-                  styles.conversationItem,
-                  selectedConversation === conv.id &&
-                    styles.conversationItemActive,
-                ]}
-                onPress={() => setSelectedConversation(conv.id)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.avatarContainer}>
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>
-                      {conv.overmanName
-                        .split(' ')
-                        .map(n => n[0])
-                        .join('')}
-                    </Text>
+          {loading ? (
+            <ActivityIndicator style={{ marginTop: 24 }} color="#1e3a5f" />
+          ) : (
+            <ScrollView style={styles.conversationsScroll} showsVerticalScrollIndicator={false}>
+              {peers.length === 0 && (
+                <Text style={{ padding: 16, color: '#94a3b8', fontSize: 13 }}>
+                  No overmen found
+                </Text>
+              )}
+              {peers.map(peer => (
+                <TouchableOpacity
+                  key={peer.id}
+                  style={[
+                    styles.conversationItem,
+                    selectedPeerId === peer.id && styles.conversationItemActive,
+                  ]}
+                  onPress={() => handleSelectPeer(peer.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.avatarContainer}>
+                    <View style={styles.avatar}>
+                      <Text style={styles.avatarText}>{getInitials(peer.name)}</Text>
+                    </View>
+                    {(unreadCounts[peer.id] ?? 0) > 0 && (
+                      <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadBadgeText}>{unreadCounts[peer.id]}</Text>
+                      </View>
+                    )}
                   </View>
-                  {conv.unreadCount > 0 && (
-                    <View style={styles.unreadBadge}>
-                      <Text style={styles.unreadBadgeText}>
-                        {conv.unreadCount}
+                  <View style={styles.conversationInfo}>
+                    <View style={styles.conversationHeader}>
+                      <Text style={styles.conversationName}>{peer.name}</Text>
+                      <Text style={styles.conversationTime}>
+                        {lastMessages[peer.id]?.time ?? ''}
                       </Text>
                     </View>
-                  )}
-                </View>
-                <View style={styles.conversationInfo}>
-                  <View style={styles.conversationHeader}>
-                    <Text style={styles.conversationName}>
-                      {conv.overmanName}
-                    </Text>
-                    <Text style={styles.conversationTime}>
-                      {conv.timestamp}
+                    <Text style={styles.conversationId}>{peer.employee_code}</Text>
+                    <Text
+                      style={[
+                        styles.conversationLastMessage,
+                        (unreadCounts[peer.id] ?? 0) > 0 && styles.conversationLastMessageUnread,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {lastMessages[peer.id]?.text ?? 'Tap to start chatting'}
                     </Text>
                   </View>
-                  <Text style={styles.conversationId}>{conv.overmanId}</Text>
-                  <Text
-                    style={[
-                      styles.conversationLastMessage,
-                      conv.unreadCount > 0 &&
-                        styles.conversationLastMessageUnread,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {conv.lastMessage}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
         </View>
 
         {/* Chat Area */}
         <View style={styles.chatArea}>
-          {selectedConv ? (
+          {selectedPeer ? (
             <KeyboardAvoidingView
               style={styles.chatContainer}
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -276,12 +217,8 @@ const CommunicationPanel: React.FC = () => {
               {/* Chat Header */}
               <View style={styles.chatHeader}>
                 <View>
-                  <Text style={styles.chatHeaderName}>
-                    {selectedConv.overmanName}
-                  </Text>
-                  <Text style={styles.chatHeaderId}>
-                    {selectedConv.overmanId}
-                  </Text>
+                  <Text style={styles.chatHeaderName}>{selectedPeer.name}</Text>
+                  <Text style={styles.chatHeaderId}>{selectedPeer.employee_code}</Text>
                 </View>
                 <View style={styles.roleBadge}>
                   <Text style={styles.roleBadgeText}>Overman</Text>
@@ -289,66 +226,78 @@ const CommunicationPanel: React.FC = () => {
               </View>
 
               {/* Messages */}
-              <ScrollView
-                style={styles.messagesScroll}
-                contentContainerStyle={styles.messagesContent}
-                showsVerticalScrollIndicator={false}
-              >
-                {selectedConv.messages.map(msg => (
-                  <View
-                    key={msg.id}
-                    style={[
-                      styles.messageContainer,
-                      msg.sender === 'Manager'
-                        ? styles.messageContainerManager
-                        : styles.messageContainerOverman,
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.messageBubble,
-                        msg.sender === 'Manager'
-                          ? styles.messageBubbleManager
-                          : styles.messageBubbleOverman,
-                      ]}
-                    >
-                      <View style={styles.messageHeader}>
-                        <Text
-                          style={[
-                            styles.messageSender,
-                            msg.sender === 'Manager' &&
-                              styles.messageSenderManager,
-                          ]}
-                        >
-                          {msg.sender}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.messageTimestamp,
-                            msg.sender === 'Manager' &&
-                              styles.messageTimestampManager,
-                          ]}
-                        >
-                          {msg.timestamp}
-                        </Text>
-                      </View>
-                      <Text
+              {loadingMessages ? (
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                  <ActivityIndicator color="#1e3a5f" />
+                </View>
+              ) : (
+                <ScrollView
+                  ref={scrollRef}
+                  style={styles.messagesScroll}
+                  contentContainerStyle={styles.messagesContent}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {messages.length === 0 && (
+                    <Text style={{ textAlign: 'center', color: '#94a3b8', marginTop: 40 }}>
+                      No messages yet. Say hello!
+                    </Text>
+                  )}
+                  {messages.map(msg => {
+                    const isMe = msg.sender_id === user?.id;
+                    return (
+                      <View
+                        key={msg.id}
                         style={[
-                          styles.messageText,
-                          msg.sender === 'Manager' && styles.messageTextManager,
+                          styles.messageContainer,
+                          isMe ? styles.messageContainerManager : styles.messageContainerOverman,
                         ]}
                       >
-                        {msg.text}
-                      </Text>
-                      {msg.sender === 'Manager' && msg.status && (
-                        <Text style={styles.messageStatus}>
-                          {msg.status === 'read' ? '✓✓' : '✓'}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
+                        <View
+                          style={[
+                            styles.messageBubble,
+                            isMe ? styles.messageBubbleManager : styles.messageBubbleOverman,
+                          ]}
+                        >
+                          <View style={styles.messageHeader}>
+                            <Text
+                              style={[
+                                styles.messageSender,
+                                isMe && styles.messageSenderManager,
+                              ]}
+                            >
+                              {isMe ? 'You' : (msg.sender?.name ?? selectedPeer.name)}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.messageTimestamp,
+                                isMe && styles.messageTimestampManager,
+                              ]}
+                            >
+                              {new Date(msg.created_at).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </Text>
+                          </View>
+                          <Text
+                            style={[
+                              styles.messageText,
+                              isMe && styles.messageTextManager,
+                            ]}
+                          >
+                            {msg.content}
+                          </Text>
+                          {isMe && (
+                            <Text style={styles.messageStatus}>
+                              {msg.is_read ? 'âœ“âœ“' : 'âœ“'}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              )}
 
               {/* Message Input */}
               <View style={styles.inputContainer}>
@@ -364,19 +313,23 @@ const CommunicationPanel: React.FC = () => {
                 <TouchableOpacity
                   style={[
                     styles.sendButton,
-                    !messageText.trim() && styles.sendButtonDisabled,
+                    (!messageText.trim() || sending) && styles.sendButtonDisabled,
                   ]}
                   onPress={handleSendMessage}
-                  disabled={!messageText.trim()}
+                  disabled={!messageText.trim() || sending}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.sendButtonText}>Send</Text>
+                  {sending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.sendButtonText}>Send</Text>
+                  )}
                 </TouchableOpacity>
               </View>
             </KeyboardAvoidingView>
           ) : (
             <View style={styles.emptyChat}>
-              <Text style={styles.emptyChatIcon}>💬</Text>
+              <Text style={styles.emptyChatIcon}>ðŸ’¬</Text>
               <Text style={styles.emptyChatText}>
                 Select a conversation to start messaging
               </Text>

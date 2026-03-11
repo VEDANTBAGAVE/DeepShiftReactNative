@@ -133,6 +133,64 @@ export interface AuditLog {
   timestamp: string;
 }
 
+// Task types
+export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+export type TaskPriorityDB = 'low' | 'normal' | 'high';
+export type TaskCategoryDB =
+  | 'safety'
+  | 'maintenance'
+  | 'inspection'
+  | 'production'
+  | 'other';
+
+export interface Task {
+  id: string;
+  title: string;
+  instructions: string | null;
+  category: TaskCategoryDB;
+  priority: TaskPriorityDB;
+  section_id: string;
+  shift_id: string | null;
+  created_by: string;
+  due_date: string | null;
+  status: TaskStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskAssignment {
+  id: string;
+  task_id: string;
+  worker_id: string;
+  assigned_at: string;
+  completed_at: string | null;
+}
+
+// Joined task with assignment info
+export interface TaskWithAssignment extends Task {
+  task_assignments: TaskAssignment[];
+  creator?: { name: string; employee_code: string };
+}
+
+// Notification types
+export type NotificationTypeDB =
+  | 'remark'
+  | 'report_status'
+  | 'incident'
+  | 'safety'
+  | 'task';
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: NotificationTypeDB;
+  title: string;
+  body: string | null;
+  is_read: boolean;
+  related_entity_id: string | null;
+  created_at: string;
+}
+
 export interface ShiftHandover {
   id: string;
   outgoing_shift_id: string;

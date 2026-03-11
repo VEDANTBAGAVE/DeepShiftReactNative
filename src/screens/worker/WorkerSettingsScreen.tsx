@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -12,12 +12,36 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
 import { useAuth } from '../../context/AuthContext';
+import { userService } from '../../services/userService';
 
 type WorkerSettingsNavigationProp = StackNavigationProp<RootStackParamList>;
 
 const WorkerSettingsScreen: React.FC = () => {
   const navigation = useNavigation<WorkerSettingsNavigationProp>();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
+  const [sectionName, setSectionName] = useState<string>('—');
+
+  useEffect(() => {
+    const fetchSection = async () => {
+      if (!user?.section_id) return;
+      try {
+        const sections = await userService.getSections();
+        const found = sections.find(s => s.id === user.section_id);
+        if (found) setSectionName(found.section_name);
+      } catch {}
+    };
+    fetchSection();
+  }, [user]);
+
+  const getInitials = (name?: string | null) => {
+    if (!name) return '?';
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
 
   const [language, setLanguage] = React.useState<'en' | 'hi' | 'mr'>('en');
 
@@ -29,7 +53,14 @@ const WorkerSettingsScreen: React.FC = () => {
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: () => logout() },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          navigation.reset({ index: 0, routes: [{ name: 'LoginScreen' }] });
+        },
+      },
     ]);
   };
 
@@ -49,6 +80,40 @@ const WorkerSettingsScreen: React.FC = () => {
       </View>
 
       <ScrollView style={styles.scrollView}>
+        {/* Profile Hero */}
+        <View style={styles.profileHero}>
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarText}>{getInitials(user?.name)}</Text>
+          </View>
+          <Text style={styles.profileName}>{user?.name ?? '—'}</Text>
+          <View style={styles.roleBadge}>
+            <Text style={styles.roleText}>Worker</Text>
+          </View>
+        </View>
+
+        {/* Profile Info */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🪪 Account Info</Text>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Employee Code</Text>
+            <Text style={styles.infoValue}>{user?.employee_code ?? '—'}</Text>
+          </View>
+          <View style={styles.infoDivider} />
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Section</Text>
+            <Text style={styles.infoValue}>{sectionName}</Text>
+          </View>
+          {user?.phone ? (
+            <>
+              <View style={styles.infoDivider} />
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Phone</Text>
+                <Text style={styles.infoValue}>{user.phone}</Text>
+              </View>
+            </>
+          ) : null}
+        </View>
+
         {/* Language */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>🌐 Language</Text>
@@ -156,13 +221,71 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-    padding: 16,
+  },
+  profileHero: {
+    alignItems: 'center',
+    paddingVertical: 28,
+    backgroundColor: '#1e3a5f',
+  },
+  avatarCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  avatarText: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  profileName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 6,
+  },
+  roleBadge: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  roleText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  infoLabel: {
+    fontSize: 14,
+    color: '#64748b',
+  },
+  infoValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1e293b',
+  },
+  infoDivider: {
+    height: 1,
+    backgroundColor: '#f1f5f9',
+    marginVertical: 4,
   },
   section: {
     backgroundColor: '#fff',
     borderRadius: 16,
     padding: 18,
     marginBottom: 16,
+    marginHorizontal: 16,
     elevation: 2,
   },
   sectionTitle: {

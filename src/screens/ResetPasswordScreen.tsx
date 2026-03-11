@@ -8,6 +8,7 @@ import {
 import { TextInput, Button, Text, HelperText } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { supabase } from '../services/supabase';
 
 const ResetPasswordScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -37,12 +38,16 @@ const ResetPasswordScreen: React.FC = () => {
     setLoading(true);
 
     try {
-      // This would be an actual API call in a real app
-      await new Promise<void>(resolve => setTimeout(() => resolve(), 1500));
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: 'deepshift://reset-password',
+      });
+      if (error) throw error;
       setResetSent(true);
       setEmailError('');
-    } catch (error) {
-      setEmailError('Error requesting password reset. Please try again.');
+    } catch (error: any) {
+      setEmailError(
+        error.message ?? 'Error requesting password reset. Please try again.',
+      );
     } finally {
       setLoading(false);
     }

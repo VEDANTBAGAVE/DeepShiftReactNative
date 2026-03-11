@@ -17,77 +17,12 @@ type NewShiftNavigationProp = StackNavigationProp<RootStackParamList>;
 const NewShiftScreen: React.FC = () => {
   const navigation = useNavigation<NewShiftNavigationProp>();
 
-  const handleUseExisting = () => {
-    // Navigate to existing NewShiftLogScreen for now
-    navigation.navigate('NewShiftLogScreen');
-  };
+  // Redirect immediately to the fully-wired shift log form
+  React.useEffect(() => {
+    navigation.replace('NewShiftLogScreen');
+  }, [navigation]);
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>New Shift</Text>
-        </View>
-        <View style={styles.headerPlaceholder} />
-      </View>
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-      >
-        <View style={styles.comingSoon}>
-          <Text style={styles.comingSoonIcon}>🚧</Text>
-          <Text style={styles.comingSoonTitle}>Enhanced Shift Form</Text>
-          <Text style={styles.comingSoonText}>
-            The new 6-section shift form with autosave, photo capture, and
-            validation is under construction.
-          </Text>
-          <Text style={styles.comingSoonText}>
-            For now, you can use the existing shift log form.
-          </Text>
-
-          <TouchableOpacity
-            style={styles.existingButton}
-            onPress={handleUseExisting}
-          >
-            <Text style={styles.existingButtonText}>
-              Use Existing Shift Log Form →
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.featurePreview}>
-          <Text style={styles.previewTitle}>Coming Soon Features:</Text>
-          <View style={styles.featureList}>
-            <Text style={styles.featureItem}>
-              ✓ Step 1 of 6 progress indicator
-            </Text>
-            <Text style={styles.featureItem}>
-              ✓ Auto-save draft every 30 seconds
-            </Text>
-            <Text style={styles.featureItem}>
-              ✓ Equipment section with photo requirements
-            </Text>
-            <Text style={styles.featureItem}>
-              ✓ Safety gas readings validation
-            </Text>
-            <Text style={styles.featureItem}>
-              ✓ Work summary with character counter
-            </Text>
-            <Text style={styles.featureItem}>
-              ✓ Attachments with camera/gallery
-            </Text>
-          </View>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
+  return null;
 };
 
 const styles = StyleSheet.create({

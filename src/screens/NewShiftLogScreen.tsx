@@ -8,10 +8,15 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
+import { useAuth } from '../context/AuthContext';
+import { shiftService } from '../services/shiftService';
+import { workerLogService } from '../services/workerLogService';
+import { equipmentService } from '../services/equipmentService';
 
 type NewShiftLogScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -25,6 +30,8 @@ interface EquipmentEntry {
 
 const NewShiftLogScreen: React.FC = () => {
   const navigation = useNavigation<NewShiftLogScreenNavigationProp>();
+  const { user } = useAuth();
+  const [submitting, setSubmitting] = useState(false);
 
   // Shift Details Section
   const [shiftType, setShiftType] = useState<'morning' | 'afternoon' | 'night'>(
@@ -128,54 +135,101 @@ const NewShiftLogScreen: React.FC = () => {
     return true;
   };
 
-  const handleSubmit = () => {
-    if (!validateForm()) {
+  const handleSubmit = async () => {
+    if (!validateForm()) return;
+    if (!user) {
+      Alert.alert('Error', 'User session not found. Please log in again.');
       return;
     }
 
-    const shiftLogData = {
-      id: Date.now().toString(),
-      timestamp: new Date().toISOString(),
-      status: 'Submitted',
-      shiftDetails: {
-        shiftType,
-        workArea,
-        attendanceStatus,
-      },
-      crew: {
-        members: crewMembers,
-        supervisor: supervisorName,
-      },
-      equipment,
-      safety: {
-        gasReadings: {
-          co: gasReadingCO,
-          ch4: gasReadingCH4,
-          o2: gasReadingO2,
-        },
-        ventilationStatus,
-        ppeUsed,
-      },
-      workSummary: {
-        tasksPerformed,
-        productionAchieved,
-        problemsEncountered,
-      },
-    };
+    setSubmitting(true);
+    try {
+      // Map UI shift type to DB shift type ('afternoon' → 'evening')
+      const dbShiftType = shiftType === 'afternoon' ? 'evening' : shiftType;
 
-    // TODO: Store in AsyncStorage and/or send to backend API
-    console.log('Shift Log Submitted:', shiftLogData);
+      // Get today's shift for the worker's section
+      const todayShifts = await shiftService.getTodayShifts(
+        user.section_id ?? undefined,
+      );
+      let shift =
+        todayShifts.find(s => s.shift_type === dbShiftType) ??
+        todayShifts[0] ??
+        null;
 
-    Alert.alert(
-      'Success',
-      'Your shift log has been submitted successfully and is pending supervisor review.',
-      [
-        {
-          text: 'OK',
-          onPress: () => navigation.navigate('WorkerDashboard'),
-        },
-      ],
-    );
+      if (!shift) {
+        Alert.alert(
+          'No Active Shift',
+          'No shift has been created for your section today. Please contact your overman.',
+        );
+        return;
+      }
+
+      // Get or create worker log for this shift
+      const log = await workerLogService.getOrCreateWorkerLog(
+        shift.id,
+        user.id,
+      );
+
+      // Build safety remarks summary
+      const safetyInfo = [
+        `Gas CO: ${gasReadingCO}%`,
+        `Gas CH4: ${gasReadingCH4}%`,
+        `O2: ${gasReadingO2}%`,
+        `Ventilation: ${ventilationStatus}`,
+        `PPE: ${ppeUsed.join(', ')}`,
+      ].join(' | ');
+
+      // Build general remarks
+      const generalRemarks = [
+        crewMembers ? `Crew: ${crewMembers}` : '',
+        supervisorName ? `Supervisor: ${supervisorName}` : '',
+        productionAchieved ? `Production: ${productionAchieved}` : '',
+        problemsEncountered ? `Issues: ${problemsEncountered}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+
+      // Update the worker log with full form data
+      await workerLogService.updateWorkerLog(log.id, {
+        attendance_status: attendanceStatus === 'absent' ? 'absent' : 'present',
+        check_in_time: log.check_in_time ?? new Date().toISOString(),
+        tasks_performed: tasksPerformed,
+        safety_check_passed: true,
+        safety_remarks: safetyInfo,
+        remarks: generalRemarks,
+      });
+
+      // Submit the log
+      await workerLogService.submitWorkerLog(log.id, tasksPerformed);
+
+      // Log faulty / maintenance equipment to equipment_logs
+      const faultyEquipment = equipment.filter(e => e.condition !== 'good');
+      await Promise.all(
+        faultyEquipment.map(e =>
+          equipmentService.createEquipmentLog({
+            shift_id: shift!.id,
+            section_id: user.section_id ?? '',
+            equipment_name: e.name,
+            condition_status: e.condition === 'faulty' ? 'faulty' : 'ok',
+            issue_description: e.notes || undefined,
+            reported_by: user.id,
+          }),
+        ),
+      );
+
+      Alert.alert(
+        'Submitted',
+        'Your shift log has been submitted successfully and is pending supervisor review.',
+        [{ text: 'OK', onPress: () => navigation.navigate('WorkerDashboard') }],
+      );
+    } catch (err: any) {
+      Alert.alert(
+        'Submission Failed',
+        err.message ?? 'Something went wrong. Please try again.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleCancel = () => {
@@ -533,8 +587,16 @@ const NewShiftLogScreen: React.FC = () => {
 
         {/* Submit Button */}
         <View style={styles.submitSection}>
-          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-            <Text style={styles.submitButtonText}>✓ Submit Shift Log</Text>
+          <TouchableOpacity
+            style={[styles.submitButton, submitting && { opacity: 0.6 }]}
+            onPress={handleSubmit}
+            disabled={submitting}
+          >
+            {submitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.submitButtonText}>✓ Submit Shift Log</Text>
+            )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
             <Text style={styles.cancelButtonText}>Cancel</Text>

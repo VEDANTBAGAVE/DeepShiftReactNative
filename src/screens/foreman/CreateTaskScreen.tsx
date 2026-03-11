@@ -13,7 +13,9 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
 import { useForemanDashboard } from '../../hooks/useDashboard';
+import { useAuth } from '../../context/AuthContext';
 import { TaskPriority, TaskCategory } from '../../types/worker';
+import { taskService } from '../../services/taskService';
 
 type CreateTaskScreenRouteProp = RouteProp<
   RootStackParamList,
@@ -40,6 +42,7 @@ const CreateTaskScreen: React.FC = () => {
   const route = useRoute<CreateTaskScreenRouteProp>();
   const { selectedWorkers = [] } = route.params || {};
   const { workers } = useForemanDashboard();
+  const { user } = useAuth();
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<TaskCategory>('other');
@@ -65,24 +68,46 @@ const CreateTaskScreen: React.FC = () => {
       return;
     }
     if (assigneeIds.length === 0) {
-      Alert.alert('Validation Error', 'Please select at least one worker to assign this task to');
+      Alert.alert(
+        'Validation Error',
+        'Please select at least one worker to assign this task to',
+      );
       return;
     }
     if (instructions.length > 500) {
-      Alert.alert('Validation Error',
+      Alert.alert(
+        'Validation Error',
         'Instructions must be 500 characters or less',
       );
       return;
     }
 
     setIsSubmitting(true);
-    // Task creation requires a database table — coming soon
-    setTimeout(() => {
+    try {
+      if (!user?.section_id) {
+        Alert.alert('Error', 'No section assigned to your account.');
+        return;
+      }
+      const task = await taskService.createTask({
+        title: title.trim(),
+        instructions: instructions.trim() || undefined,
+        category: category as any,
+        priority: priority as any,
+        section_id: user.section_id,
+        created_by: user.id,
+        due_date: dueDate.toISOString().split('T')[0],
+      });
+      await taskService.assignWorkers(task.id, assigneeIds);
+      Alert.alert(
+        '✓ Task Assigned',
+        `"${task.title}" has been assigned to ${assigneeIds.length} worker(s).`,
+        [{ text: 'Done', onPress: () => navigation.goBack() }],
+      );
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Failed to create task');
+    } finally {
       setIsSubmitting(false);
-      Alert.alert('Coming Soon', 'Task assignment will be available once the tasks table is added.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
-    }, 300);
+    }
   };
 
   const toggleAssignee = (workerId: string) => {

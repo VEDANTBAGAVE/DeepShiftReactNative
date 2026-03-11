@@ -36,27 +36,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   useEffect(() => {
     checkAuthState();
 
-    // Guard against supabase not being initialized
-    if (!supabase || !supabase.auth) {
-      console.warn('Supabase client not available, skipping auth subscription');
-      return;
-    }
-
     // Listen for auth state changes
-    let subscription: { unsubscribe: () => void } | null = null;
-    try {
-      const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
-        if (event === 'SIGNED_IN' && session) {
-          await refreshUser();
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null);
-          setRole(null);
-        }
-      });
-      subscription = data?.subscription || null;
-    } catch (error) {
-      console.error('Error setting up auth listener:', error);
-    }
+    const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        await refreshUser();
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setRole(null);
+      }
+    });
+    const subscription = data?.subscription;
 
     return () => {
       if (subscription) {

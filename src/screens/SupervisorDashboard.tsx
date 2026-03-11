@@ -68,8 +68,7 @@ const SupervisorDashboard: React.FC = () => {
   };
 
   const handleProfile = () => {
-    console.log('Opening Profile...');
-    // TODO: Navigate to profile
+    navigation.navigate('OvermanProfileScreen');
   };
 
   const handleSectionReports = () => {

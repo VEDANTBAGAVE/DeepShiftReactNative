@@ -8,6 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -51,8 +52,8 @@ const ViewTasksScreen: React.FC = () => {
     try {
       const result = await taskService.getTasksForWorker(user.id);
       setTasks(result);
-    } catch {
-      // silent — empty list shown
+    } catch (err) {
+      Alert.alert('Error', 'Failed to load tasks. Please try again.');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);

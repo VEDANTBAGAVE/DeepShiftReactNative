@@ -5,9 +5,11 @@ import {
   Text,
   TouchableOpacity,
   SafeAreaView,
+  FlatList,
   ScrollView,
   TextInput,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -31,37 +33,59 @@ const STATUS_FILTERS: {
 
 const WorkerListScreen: React.FC = () => {
   const navigation = useNavigation<WorkerListNavigationProp>();
-  const { workers, workerLogs, stats, markAttendance, bulkMarkAttendance, isLoading, refreshData } = useForemanDashboard();
+  const {
+    workers,
+    workerLogs,
+    stats,
+    markAttendance,
+    bulkMarkAttendance,
+    isLoading,
+    refreshData,
+  } = useForemanDashboard();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<AttendanceStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<AttendanceStatus | 'all'>(
+    'all',
+  );
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
-  const [selectedWorkers, setSelectedWorkers] = useState<Set<string>>(new Set());
+  const [selectedWorkers, setSelectedWorkers] = useState<Set<string>>(
+    new Set(),
+  );
 
   // Map workers + logs to display format
   const workersWithAttendance = useMemo(() => {
     return workers.map(w => {
       const log = workerLogs.find(l => l.worker_id === w.id);
-      return { ...w, todayAttendance: (log?.attendance_status as AttendanceStatus) || 'not-marked' };
+      return {
+        ...w,
+        todayAttendance:
+          (log?.attendance_status as AttendanceStatus) || 'not-marked',
+      };
     });
   }, [workers, workerLogs]);
 
   const filteredWorkers = useMemo(() => {
     return workersWithAttendance.filter(w => {
-      const matchesSearch = searchQuery === '' ||
+      const matchesSearch =
+        searchQuery === '' ||
         w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         w.employee_code.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus = statusFilter === 'all' || w.todayAttendance === statusFilter;
+      const matchesStatus =
+        statusFilter === 'all' || w.todayAttendance === statusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [workersWithAttendance, searchQuery, statusFilter]);
 
-  const todayStats = useMemo(() => ({
-    total: stats.totalWorkers,
-    present: stats.workersPresent,
-    absent: stats.workersAbsent,
-    notMarked: stats.totalWorkers - stats.workersPresent - stats.workersAbsent,
-  }), [stats]);
+  const todayStats = useMemo(
+    () => ({
+      total: stats.totalWorkers,
+      present: stats.workersPresent,
+      absent: stats.workersAbsent,
+      notMarked:
+        stats.totalWorkers - stats.workersPresent - stats.workersAbsent,
+    }),
+    [stats],
+  );
 
   const toggleWorkerSelection = (workerId: string) => {
     const newSelection = new Set(selectedWorkers);
@@ -95,9 +119,15 @@ const WorkerListScreen: React.FC = () => {
           text: 'Confirm',
           onPress: async () => {
             await bulkMarkAttendance(
-              Array.from(selectedWorkers).map(id => ({ workerId: id, status: status as 'present' | 'absent' }))
+              Array.from(selectedWorkers).map(id => ({
+                workerId: id,
+                status: status as 'present' | 'absent',
+              })),
             );
-            Alert.alert('Success', `${selectedWorkers.size} worker(s) marked as ${status}`);
+            Alert.alert(
+              'Success',
+              `${selectedWorkers.size} worker(s) marked as ${status}`,
+            );
             setIsMultiSelectMode(false);
             setSelectedWorkers(new Set());
           },
@@ -112,20 +142,16 @@ const WorkerListScreen: React.FC = () => {
   };
 
   const handleMarkAbsent = (workerId: string) => {
-    Alert.alert(
-      'Mark Absent',
-      'Mark this worker as absent?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            await markAttendance(workerId, 'absent');
-            Alert.alert('Success', 'Worker marked as absent');
-          },
+    Alert.alert('Mark Absent', 'Mark this worker as absent?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Confirm',
+        onPress: async () => {
+          await markAttendance(workerId, 'absent');
+          Alert.alert('Success', 'Worker marked as absent');
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const handleAssignTask = (workerId: string) => {
@@ -331,11 +357,17 @@ const WorkerListScreen: React.FC = () => {
       )}
 
       {/* Worker List */}
-      <ScrollView
+      <FlatList
+        data={filteredWorkers}
+        keyExtractor={item => item.id}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollViewContent}
-      >
-        {filteredWorkers.length === 0 ? (
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={10}
+        refreshControl={
+          <RefreshControl refreshing={isLoading} onRefresh={refreshData} />
+        }
+        ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateIcon}>👤</Text>
             <Text style={styles.emptyStateTitle}>No Workers Found</Text>
@@ -345,113 +377,114 @@ const WorkerListScreen: React.FC = () => {
                 : 'No workers in this section'}
             </Text>
           </View>
-        ) : (
-          filteredWorkers.map(worker => (
-            <TouchableOpacity
-              key={worker.id}
-              style={[
-                styles.workerCard,
-                selectedWorkers.has(worker.id) && styles.workerCardSelected,
-              ]}
-              onPress={() => {
-                if (isMultiSelectMode) {
-                  toggleWorkerSelection(worker.id);
-                } else {
-                  handleViewProfile(worker.id);
-                }
-              }}
-              onLongPress={() => handleLongPress(worker.id)}
-            >
-              {isMultiSelectMode && (
-                <View style={styles.checkboxContainer}>
-                  <View
-                    style={[
-                      styles.checkbox,
-                      selectedWorkers.has(worker.id) && styles.checkboxChecked,
-                    ]}
-                  >
-                    {selectedWorkers.has(worker.id) && (
-                      <Text style={styles.checkboxCheck}>✓</Text>
-                    )}
-                  </View>
+        }
+        renderItem={({ item: worker }) => (
+          <TouchableOpacity
+            key={worker.id}
+            style={[
+              styles.workerCard,
+              selectedWorkers.has(worker.id) && styles.workerCardSelected,
+            ]}
+            onPress={() => {
+              if (isMultiSelectMode) {
+                toggleWorkerSelection(worker.id);
+              } else {
+                handleViewProfile(worker.id);
+              }
+            }}
+            onLongPress={() => handleLongPress(worker.id)}
+          >
+            {isMultiSelectMode && (
+              <View style={styles.checkboxContainer}>
+                <View
+                  style={[
+                    styles.checkbox,
+                    selectedWorkers.has(worker.id) && styles.checkboxChecked,
+                  ]}
+                >
+                  {selectedWorkers.has(worker.id) && (
+                    <Text style={styles.checkboxCheck}>✓</Text>
+                  )}
                 </View>
-              )}
+              </View>
+            )}
 
-              <View style={styles.workerInfo}>
-                <View style={styles.workerHeader}>
-                  <Text style={styles.workerName}>{worker.name}</Text>
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      {
-                        backgroundColor: getStatusColor(worker.todayAttendance),
-                      },
-                    ]}
-                  >
-                    <Text style={styles.statusBadgeText}>
-                      {getStatusLabel(worker.todayAttendance)}
-                    </Text>
-                  </View>
-                </View>
-
-                <Text style={styles.workerRole}>
-                  {worker.role} • {worker.employee_code}
-                </Text>
-
-                <View style={styles.workerStats}>
-                  <View style={styles.workerStat}>
-                    <Text style={styles.workerStatIcon}>📋</Text>
-                    <Text style={styles.workerStatText}>
-                      {worker.section_id ? worker.section_id.slice(0, 8) : 'No section'}
-                    </Text>
-                  </View>
+            <View style={styles.workerInfo}>
+              <View style={styles.workerHeader}>
+                <Text style={styles.workerName}>{worker.name}</Text>
+                <View
+                  style={[
+                    styles.statusBadge,
+                    {
+                      backgroundColor: getStatusColor(worker.todayAttendance),
+                    },
+                  ]}
+                >
+                  <Text style={styles.statusBadgeText}>
+                    {getStatusLabel(worker.todayAttendance)}
+                  </Text>
                 </View>
               </View>
 
-              {!isMultiSelectMode && (
-                <View style={styles.quickActions}>
-                  <TouchableOpacity
-                    style={styles.quickActionButton}
-                    onPress={e => {
-                      e.stopPropagation();
-                      handleMarkPresent(worker.id);
-                    }}
-                  >
-                    <Text style={styles.quickActionIcon}>✓</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.quickActionButton}
-                    onPress={e => {
-                      e.stopPropagation();
-                      handleMarkAbsent(worker.id);
-                    }}
-                  >
-                    <Text style={styles.quickActionIcon}>✕</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.quickActionButton}
-                    onPress={e => {
-                      e.stopPropagation();
-                      handleAssignTask(worker.id);
-                    }}
-                  >
-                    <Text style={styles.quickActionIcon}>📋</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.quickActionButton}
-                    onPress={e => {
-                      e.stopPropagation();
-                      handleAddRemark(worker.id);
-                    }}
-                  >
-                    <Text style={styles.quickActionIcon}>💬</Text>
-                  </TouchableOpacity>
+              <Text style={styles.workerRole}>
+                {worker.role} • {worker.employee_code}
+              </Text>
+
+              <View style={styles.workerStats}>
+                <View style={styles.workerStat}>
+                  <Text style={styles.workerStatIcon}>📋</Text>
+                  <Text style={styles.workerStatText}>
+                    {worker.section_id
+                      ? worker.section_id.slice(0, 8)
+                      : 'No section'}
+                  </Text>
                 </View>
-              )}
-            </TouchableOpacity>
-          ))
+              </View>
+            </View>
+
+            {!isMultiSelectMode && (
+              <View style={styles.quickActions}>
+                <TouchableOpacity
+                  style={styles.quickActionButton}
+                  onPress={e => {
+                    e.stopPropagation();
+                    handleMarkPresent(worker.id);
+                  }}
+                >
+                  <Text style={styles.quickActionIcon}>✓</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.quickActionButton}
+                  onPress={e => {
+                    e.stopPropagation();
+                    handleMarkAbsent(worker.id);
+                  }}
+                >
+                  <Text style={styles.quickActionIcon}>✕</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.quickActionButton}
+                  onPress={e => {
+                    e.stopPropagation();
+                    handleAssignTask(worker.id);
+                  }}
+                >
+                  <Text style={styles.quickActionIcon}>📋</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.quickActionButton}
+                  onPress={e => {
+                    e.stopPropagation();
+                    handleAddRemark(worker.id);
+                  }}
+                >
+                  <Text style={styles.quickActionIcon}>💬</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </TouchableOpacity>
         )}
-      </ScrollView>
+      />
     </SafeAreaView>
   );
 };

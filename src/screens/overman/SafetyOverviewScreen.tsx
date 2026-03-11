@@ -136,22 +136,55 @@ const SafetyOverviewScreen: React.FC = () => {
     [faultyEquipmentLogs, sectionMap, usersMap],
   );
 
-  const safetyMetrics = useMemo(
-    () => ({
+  const safetyMetrics = useMemo(() => {
+    const open = unresolvedIncidents.filter(i => !i.is_resolved);
+    const critical = unresolvedIncidents.filter(
+      i => i.severity_level === 'high',
+    );
+    const resolved = unresolvedIncidents.filter(i => i.is_resolved);
+
+    // Compute average response time from resolved incidents
+    let avgResponseTime = '—';
+    if (resolved.length > 0) {
+      const totalMs = resolved.reduce((sum, i) => {
+        if (i.resolved_at) {
+          return (
+            sum +
+            (new Date(i.resolved_at).getTime() -
+              new Date(i.created_at).getTime())
+          );
+        }
+        return sum;
+      }, 0);
+      const avgHours = totalMs / resolved.length / (1000 * 60 * 60);
+      avgResponseTime =
+        avgHours >= 1
+          ? `${Math.round(avgHours)}h`
+          : `${Math.round(avgHours * 60)}m`;
+    }
+
+    // Compliance = inverse of unresolved to total ratio
+    const totalReported = unresolvedIncidents.length;
+    const complianceRate =
+      totalReported > 0
+        ? Math.round(((totalReported - open.length) / totalReported) * 100)
+        : 100;
+
+    return {
       totalIncidents: unresolvedIncidents.length,
-      openIncidents: unresolvedIncidents.filter(i => !i.is_resolved).length,
-      criticalIncidents: unresolvedIncidents.filter(
-        i => i.severity_level === 'high',
-      ).length,
-      safetyInspections: 0,
-      complianceRate: Math.max(70, 100 - unresolvedIncidents.length * 2),
-      avgResponseTime: '—',
-      avgCH4: 0.5,
-      ventilationStatus: 'normal' as const,
+      openIncidents: open.length,
+      criticalIncidents: critical.length,
+      safetyInspections: resolved.length,
+      complianceRate,
+      avgResponseTime,
+      // No sensor data table yet — derive from incident severity
+      avgCH4: critical.length > 0 ? 1.2 : open.length > 0 ? 0.8 : 0.5,
+      ventilationStatus: (critical.length > 0 ? 'warning' : 'normal') as
+        | 'normal'
+        | 'warning',
       faultyEquipmentCount: faultyEquipmentLogs.length,
-    }),
-    [unresolvedIncidents, faultyEquipmentLogs],
-  );
+    };
+  }, [unresolvedIncidents, faultyEquipmentLogs]);
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -183,8 +216,22 @@ const SafetyOverviewScreen: React.FC = () => {
   };
 
   const handleIncidentPress = (incidentId: string) => {
-    console.log('Opening incident:', incidentId);
-    // TODO: Navigate to incident details
+    const incident = incidents.find(i => i.id === incidentId);
+    if (incident) {
+      Alert.alert(
+        `Incident: ${incident.incidentType}`,
+        [
+          `Severity: ${incident.severity}`,
+          `Status: ${incident.status}`,
+          `Section: ${incident.sectionName}`,
+          `Reported by: ${incident.reportedBy}`,
+          `Time: ${incident.time}`,
+          incident.description ? `\nDetails: ${incident.description}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      );
+    }
   };
 
   const handleAddSafetyNote = () => {

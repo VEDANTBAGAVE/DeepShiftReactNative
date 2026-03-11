@@ -5,7 +5,10 @@ import React, {
   useEffect,
   ReactNode,
 } from 'react';
+import { Alert } from 'react-native';
 import { storage } from '../utils/storage';
+import { incidentService } from '../services/incidentService';
+import { IncidentReport } from '../types/database';
 import {
   ForemanState,
   Worker,
@@ -163,7 +166,10 @@ export const ForemanProvider: React.FC<{ children: ReactNode }> = ({
 
       // If no workers exist, load demo data automatically
       if (!workers || workers.length === 0) {
-        console.log('No workers found, loading demo data...');
+        Alert.alert(
+          'Demo Mode',
+          'No workers found in local storage. Loading demo data for preview purposes.',
+        );
         await loadDemoDataInternal();
         return; // loadDemoDataInternal will set state
       }
@@ -503,8 +509,23 @@ export const ForemanProvider: React.FC<{ children: ReactNode }> = ({
     status: string,
     note?: string,
   ) => {
-    // Would integrate with WorkerContext incidents
-    console.log('Update incident status:', id, status, note);
+    try {
+      if (status === 'resolved') {
+        await incidentService.resolveIncident(
+          id,
+          profile?.id ?? '',
+          note ?? '',
+        );
+      } else {
+        const updates: Partial<IncidentReport> = {};
+        if (note) {
+          updates.resolution_notes = note;
+        }
+        await incidentService.updateIncident(id, updates);
+      }
+    } catch (error) {
+      console.error('Failed to update incident status:', error);
+    }
   };
 
   // ==================== NOTIFICATIONS ====================

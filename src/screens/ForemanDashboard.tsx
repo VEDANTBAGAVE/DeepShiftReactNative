@@ -109,7 +109,7 @@ const ForemanDashboard: React.FC = () => {
         JSON.stringify(currentStats),
       );
     } catch (error) {
-      console.log('Error loading deltas:', error);
+      // Delta loading failed — non-critical
     }
   }, []);
 
@@ -121,7 +121,9 @@ const ForemanDashboard: React.FC = () => {
       absentWorkers: dashStats.workersAbsent,
       attendancePercentage:
         dashStats.totalWorkers > 0
-          ? Math.round((dashStats.workersPresent / dashStats.totalWorkers) * 100)
+          ? Math.round(
+              (dashStats.workersPresent / dashStats.totalWorkers) * 100,
+            )
           : 0,
       openIncidents: dashStats.pendingIncidents,
       pendingReports: dashStats.shiftsToday,

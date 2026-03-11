@@ -33,47 +33,68 @@ interface ShiftReport {
 
 const ShiftReportsOverview: React.FC = () => {
   const navigation = useNavigation<ShiftReportsOverviewNavigationProp>();
-  const { allShifts, incidentSummary, overallStats, isLoading } = useManagerDashboard();
+  const { allShifts, incidentSummary, overallStats, isLoading } =
+    useManagerDashboard();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<string>('All');
 
-  const reports = useMemo<ShiftReport[]>(() =>
-    allShifts.map(s => ({
-      id: s.id,
-      date: new Date(s.shift_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
-      shiftType: s.shift_type.charAt(0).toUpperCase() + s.shift_type.slice(1),
-      overmanName: s.overman_id ?? '—',
-      totalWorkers: overallStats.totalWorkers,
-      presentWorkers: overallStats.workersPresent,
-      incidents: Array.isArray(incidentSummary) ? incidentSummary.length : 0,
-      status: s.status === 'submitted' ? 'Submitted'
-            : s.status === 'approved' ? 'Approved'
-            : s.status === 'draft' ? 'Under Review'
+  const reports = useMemo<ShiftReport[]>(
+    () =>
+      allShifts.map(s => ({
+        id: s.id,
+        date: new Date(s.shift_date).toLocaleDateString('en-IN', {
+          day: 'numeric',
+          month: 'short',
+        }),
+        shiftType: s.shift_type.charAt(0).toUpperCase() + s.shift_type.slice(1),
+        overmanName: s.overman_id ?? '—',
+        totalWorkers: overallStats.totalWorkers,
+        presentWorkers: overallStats.workersPresent,
+        incidents: Array.isArray(incidentSummary) ? incidentSummary.length : 0,
+        status:
+          s.status === 'submitted'
+            ? 'Submitted'
+            : s.status === 'approved'
+            ? 'Approved'
+            : s.status === 'draft'
+            ? 'Under Review'
             : s.status,
-      submittedAt: s.submitted_at
-        ? new Date(s.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : '—',
-      safetyScore: 90,
-      productionRate: 95,
-    })),
-  [allShifts, incidentSummary, overallStats]);
+        submittedAt: s.submitted_at
+          ? new Date(s.submitted_at).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : '—',
+        safetyScore: 90,
+        productionRate: 95,
+      })),
+    [allShifts, incidentSummary, overallStats],
+  );
   const filters = ['All', 'Submitted', 'Under Review', 'Approved', 'Flagged'];
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'Approved':    return '#10b981';
-      case 'Under Review': return '#3b82f6';
-      case 'Flagged':     return '#ef4444';
-      default:            return '#f59e0b';
+      case 'Approved':
+        return '#10b981';
+      case 'Under Review':
+        return '#3b82f6';
+      case 'Flagged':
+        return '#ef4444';
+      default:
+        return '#f59e0b';
     }
   };
 
   const getShiftIcon = (shiftType: string) => {
     switch (shiftType) {
-      case 'Morning': return '🌅';
-      case 'Evening': return '🌆';
-      case 'Night':   return '🌙';
-      default:        return '🕒';
+      case 'Morning':
+        return '🌅';
+      case 'Evening':
+        return '🌆';
+      case 'Night':
+        return '🌙';
+      default:
+        return '🕒';
     }
   };
 
@@ -87,7 +108,6 @@ const ShiftReportsOverview: React.FC = () => {
   });
 
   const handleReportPress = (report: ShiftReport) => {
-    console.log('Opening detailed view for:', report.id);
     navigation.navigate('ShiftLogDetail', { reportId: report.id });
   };
 

@@ -8,13 +8,17 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
 import { useOvermanDashboard } from '../../hooks/useDashboard';
+import { approvalService } from '../../services/approvalService';
+import { useAuth } from '../../context/AuthContext';
 
-type SectionReportsScreenNavigationProp = StackNavigationProp<RootStackParamList>;
+type SectionReportsScreenNavigationProp =
+  StackNavigationProp<RootStackParamList>;
 
 interface SectionReport {
   id: string;
@@ -31,6 +35,7 @@ interface SectionReport {
 
 const SectionReportsScreen: React.FC = () => {
   const navigation = useNavigation<SectionReportsScreenNavigationProp>();
+  const { user } = useAuth();
   const { shifts, isLoading, refreshData } = useOvermanDashboard();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -44,14 +49,23 @@ const SectionReportsScreen: React.FC = () => {
       id: s.id,
       sectionName: s.section_id,
       foremanName: 'Foreman',
-      shiftType: `${s.shift_type.charAt(0).toUpperCase() + s.shift_type.slice(1)} Shift`,
+      shiftType: `${
+        s.shift_type.charAt(0).toUpperCase() + s.shift_type.slice(1)
+      } Shift`,
       submittedAt: s.submitted_at
-        ? new Date(s.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        ? new Date(s.submitted_at).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
         : 'Not submitted',
-      status: s.status === 'submitted' ? 'pending'
-            : s.status === 'approved' ? 'approved'
-            : s.status === 'archived' ? 'approved'
-            : 'pending',
+      status:
+        s.status === 'submitted'
+          ? 'pending'
+          : s.status === 'approved'
+          ? 'approved'
+          : s.status === 'archived'
+          ? 'approved'
+          : 'pending',
       crewPresent: 0,
       crewAbsent: 0,
       incidents: 0,
@@ -63,12 +77,32 @@ const SectionReportsScreen: React.FC = () => {
     navigation.navigate('ReviewSectionReportScreen', { reportId });
   };
 
-  const handleApproveReport = (reportId: string) => {
-    console.log('Approving report:', reportId);
+  const handleApproveReport = async (reportId: string) => {
+    try {
+      await approvalService.approveShift(
+        reportId,
+        user!.id,
+        'Approved by overman',
+      );
+      Alert.alert('Success', 'Report approved successfully.');
+      refreshData();
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Failed to approve report.');
+    }
   };
 
-  const handleFlagReport = (reportId: string) => {
-    console.log('Flagging report:', reportId);
+  const handleFlagReport = async (reportId: string) => {
+    try {
+      await approvalService.rejectShift(
+        reportId,
+        user!.id,
+        'Flagged for review',
+      );
+      Alert.alert('Flagged', 'Report has been flagged for review.');
+      refreshData();
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Failed to flag report.');
+    }
   };
 
   const getStatusColor = (status: string) => {

@@ -8,6 +8,7 @@ import {
   ScrollView,
   Dimensions,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -48,14 +49,19 @@ const CrewPerformance: React.FC = () => {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [fetchedOvermen, fetchedWorkers, fetchedShifts, fetchedIncidents, fetchedSections] =
-        await Promise.all([
-          userService.getOvermen(),
-          userService.getUsers({ role: 'worker', is_active: true }),
-          shiftService.getShifts(),
-          incidentService.getIncidents(),
-          userService.getSections(),
-        ]);
+      const [
+        fetchedOvermen,
+        fetchedWorkers,
+        fetchedShifts,
+        fetchedIncidents,
+        fetchedSections,
+      ] = await Promise.all([
+        userService.getOvermen(),
+        userService.getUsers({ role: 'worker', is_active: true }),
+        shiftService.getShifts(),
+        incidentService.getIncidents(),
+        userService.getSections(),
+      ]);
       setOvermen(fetchedOvermen);
       setWorkers(fetchedWorkers);
       setAllShifts(fetchedShifts);
@@ -80,31 +86,57 @@ const CrewPerformance: React.FC = () => {
   const computedForemanData = useMemo((): ForemanPerformance[] => {
     return overmen
       .map(overman => {
-        const overmanShifts = allShifts.filter(s => s.overman_id === overman.id);
-        const approvedShifts = overmanShifts.filter(s => s.status === 'approved');
+        const overmanShifts = allShifts.filter(
+          s => s.overman_id === overman.id,
+        );
+        const approvedShifts = overmanShifts.filter(
+          s => s.status === 'approved',
+        );
         const submittedShifts = overmanShifts.filter(s => s.status !== 'draft');
         const sectionIncidents = overman.section_id
           ? allIncidents.filter(i => i.section_id === overman.section_id)
           : [];
-        const highSevIncidents = sectionIncidents.filter(i => i.severity_level === 'high');
+        const highSevIncidents = sectionIncidents.filter(
+          i => i.severity_level === 'high',
+        );
         const sectionName = overman.section_id
-          ? (sectionMap.get(overman.section_id)?.section_name ?? 'Unknown')
+          ? sectionMap.get(overman.section_id)?.section_name ?? 'Unknown'
           : 'No Section';
-        const productionEff = submittedShifts.length === 0
-          ? 80
-          : Math.min(100, Math.round((approvedShifts.length / submittedShifts.length) * 100));
-        const safetyComp = Math.max(0, Math.min(100,
-          Math.round(100 - (highSevIncidents.length / Math.max(1, overmanShifts.length)) * 10),
-        ));
+        const productionEff =
+          submittedShifts.length === 0
+            ? 80
+            : Math.min(
+                100,
+                Math.round(
+                  (approvedShifts.length / submittedShifts.length) * 100,
+                ),
+              );
+        const safetyComp = Math.max(
+          0,
+          Math.min(
+            100,
+            Math.round(
+              100 -
+                (highSevIncidents.length / Math.max(1, overmanShifts.length)) *
+                  10,
+            ),
+          ),
+        );
         const perfScore = Math.round((safetyComp + productionEff) / 2);
         const sortedIncidents = [...sectionIncidents].sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         );
         const lastIncidentDate = sortedIncidents[0]?.created_at;
         const streakDays = lastIncidentDate
-          ? Math.floor((Date.now() - new Date(lastIncidentDate).getTime()) / 86400000)
+          ? Math.floor(
+              (Date.now() - new Date(lastIncidentDate).getTime()) / 86400000,
+            )
           : 30;
-        const attendanceRate = Math.max(85, Math.min(100, Math.round(0.7 * productionEff + 30)));
+        const attendanceRate = Math.max(
+          85,
+          Math.min(100, Math.round(0.7 * productionEff + 30)),
+        );
         return {
           id: overman.employee_code,
           name: overman.name,
@@ -121,24 +153,27 @@ const CrewPerformance: React.FC = () => {
       .map((f, i) => ({ ...f, rank: i + 1 }));
   }, [overmen, allShifts, allIncidents, sectionMap]);
 
-  const overallStats = useMemo(() => ({
-    totalWorkers: workers.length,
-    activeForemen: overmen.length,
-    attendanceRate:
-      computedForemanData.length > 0
-        ? Math.round(
-            computedForemanData.reduce((s, f) => s + f.attendanceRate, 0) /
-              computedForemanData.length,
-          )
-        : 0,
-    avgSafetyScore:
-      computedForemanData.length > 0
-        ? Math.round(
-            computedForemanData.reduce((s, f) => s + f.safetyCompliance, 0) /
-              computedForemanData.length,
-          )
-        : 0,
-  }), [workers, overmen, computedForemanData]);
+  const overallStats = useMemo(
+    () => ({
+      totalWorkers: workers.length,
+      activeForemen: overmen.length,
+      attendanceRate:
+        computedForemanData.length > 0
+          ? Math.round(
+              computedForemanData.reduce((s, f) => s + f.attendanceRate, 0) /
+                computedForemanData.length,
+            )
+          : 0,
+      avgSafetyScore:
+        computedForemanData.length > 0
+          ? Math.round(
+              computedForemanData.reduce((s, f) => s + f.safetyCompliance, 0) /
+                computedForemanData.length,
+            )
+          : 0,
+    }),
+    [workers, overmen, computedForemanData],
+  );
 
   const highlights = useMemo(() => {
     if (computedForemanData.length === 0) {
@@ -149,13 +184,19 @@ const CrewPerformance: React.FC = () => {
         lowestIncidentSection: 'N/A',
       };
     }
-    const byAttendance = [...computedForemanData].sort((a, b) => b.attendanceRate - a.attendanceRate);
-    const byStreak     = [...computedForemanData].sort((a, b) => b.incidentFreeStreak - a.incidentFreeStreak);
-    const bySafety     = [...computedForemanData].sort((a, b) => b.safetyCompliance - a.safetyCompliance);
+    const byAttendance = [...computedForemanData].sort(
+      (a, b) => b.attendanceRate - a.attendanceRate,
+    );
+    const byStreak = [...computedForemanData].sort(
+      (a, b) => b.incidentFreeStreak - a.incidentFreeStreak,
+    );
+    const bySafety = [...computedForemanData].sort(
+      (a, b) => b.safetyCompliance - a.safetyCompliance,
+    );
     return {
-      mostPunctualSection:   byAttendance[0].section,
-      highestStreakDays:     byStreak[0].incidentFreeStreak,
-      topPerformer:         computedForemanData[0].name,
+      mostPunctualSection: byAttendance[0].section,
+      highestStreakDays: byStreak[0].incidentFreeStreak,
+      topPerformer: computedForemanData[0].name,
       lowestIncidentSection: bySafety[0].section,
     };
   }, [computedForemanData]);
@@ -216,7 +257,9 @@ const CrewPerformance: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={loadData} />}
+        refreshControl={
+          <RefreshControl refreshing={isLoading} onRefresh={loadData} />
+        }
       >
         {/* Overall Stats */}
         <View style={styles.statsGrid}>
@@ -365,7 +408,12 @@ const CrewPerformance: React.FC = () => {
               key={foreman.id}
               style={styles.foremanCard}
               activeOpacity={0.7}
-              onPress={() => console.log('View foreman details:', foreman.id)}
+              onPress={() =>
+                Alert.alert(
+                  foreman.name,
+                  `ID: ${foreman.id}\nSection: ${foreman.section}\nPerformance Score: ${foreman.performanceScore}\nAttendance: ${foreman.attendanceRate}%\nSafety Compliance: ${foreman.safetyCompliance}%`,
+                )
+              }
             >
               <View style={styles.foremanHeader}>
                 <View style={styles.foremanLeft}>

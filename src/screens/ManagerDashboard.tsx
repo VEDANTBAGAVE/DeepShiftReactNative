@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   ScrollView,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -136,21 +137,65 @@ const ActionCard: React.FC<ActionCardProps> = ({
 const ManagerDashboard: React.FC = () => {
   const navigation = useNavigation<ManagerDashboardNavigationProp>();
   const { user, logout } = useAuth();
-  const { allShifts, pendingApprovals: pendingApprovalShifts, overallStats, isLoading } = useManagerDashboard();
+  const {
+    allShifts,
+    pendingApprovals: pendingApprovalShifts,
+    overallStats,
+    isLoading,
+  } = useManagerDashboard();
+
+  // Compute derived metrics from allShifts with relations
+  const activeOvermen = new Set(
+    allShifts
+      .filter(s => s.status === 'submitted' || s.status === 'approved')
+      .map(s => s.overman_id),
+  ).size;
+
+  const sectionIds = new Set(allShifts.map(s => s.section_id));
+  const totalSections = sectionIds.size;
+  const operationalSections = new Set(
+    allShifts.filter(s => s.status !== 'draft').map(s => s.section_id),
+  ).size;
+
+  // Safety score: % of workers who passed safety check across today's shifts
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayShiftsWithLogs = allShifts.filter(s => s.shift_date === todayStr);
+  const allLogs = todayShiftsWithLogs.flatMap(s => s.worker_logs ?? []);
+  const safetyPassed = allLogs.filter(l => l.safety_check_passed).length;
+  const safetyScore =
+    allLogs.length > 0
+      ? Math.round((safetyPassed / allLogs.length) * 100)
+      : 100;
+
+  // Production rate: % attendance across today's shifts
+  const presentCount = allLogs.filter(
+    l => l.attendance_status === 'present',
+  ).length;
+  const productionRate =
+    allLogs.length > 0
+      ? Math.round((presentCount / allLogs.length) * 100)
+      : 100;
 
   // Real data from Supabase merged with display defaults
   const shiftData = {
     currentShift: 'Current Shift',
-    shiftTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-    activeOvermen: 0,
+    shiftTime: new Date().toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+    date: new Date().toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    }),
+    activeOvermen,
     totalWorkers: overallStats.totalWorkers || 0,
     presentWorkers: overallStats.workersPresent || 0,
     absentWorkers: overallStats.workersAbsent || 0,
-    totalSections: 0,
-    operationalSections: 0,
-    safetyScore: 100,
-    productionRate: 100,
+    totalSections,
+    operationalSections,
+    safetyScore,
+    productionRate,
     pendingApprovals: pendingApprovalShifts.length,
     criticalIncidents: overallStats.highSeverityIncidents || 0,
     openIssues: overallStats.pendingIncidents || 0,
@@ -162,7 +207,12 @@ const ManagerDashboard: React.FC = () => {
   };
 
   const handleProfile = () => {
-    console.log('Opening Profile...');
+    Alert.alert(
+      'Manager Profile',
+      `Name: ${user?.name || 'N/A'}\nRole: Manager\nEmployee Code: ${
+        user?.employee_code || 'N/A'
+      }\nEmail: ${user?.email || 'N/A'}`,
+    );
   };
 
   const handleShiftLogs = () => {
@@ -186,8 +236,7 @@ const ManagerDashboard: React.FC = () => {
   };
 
   const handleReportsArchive = () => {
-    console.log('Opening Reports Archive...');
-    // TODO: Navigate to reports archive
+    navigation.navigate('ReportsArchive');
   };
 
   return (

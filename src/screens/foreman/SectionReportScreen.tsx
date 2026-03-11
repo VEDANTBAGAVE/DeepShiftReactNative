@@ -72,6 +72,13 @@ const SectionReportScreen: React.FC = () => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const updateNumericField = (field: string, value: string) => {
+    // Allow empty string for clearing, otherwise only non-negative integers
+    if (value === '' || /^\d+$/.test(value)) {
+      setFormData(prev => ({ ...prev, [field]: value }));
+    }
+  };
+
   const handleNext = () => {
     if (currentStep < 6) {
       setCurrentStep(currentStep + 1);
@@ -86,7 +93,10 @@ const SectionReportScreen: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!currentShift) {
-      Alert.alert('No Active Shift', 'There is no active shift to submit a report for.');
+      Alert.alert(
+        'No Active Shift',
+        'There is no active shift to submit a report for.',
+      );
       return;
     }
     Alert.alert(
@@ -100,11 +110,17 @@ const SectionReportScreen: React.FC = () => {
           onPress: async () => {
             try {
               setIsSubmitting(true);
-              await shiftService.updateShiftStatus(currentShift.id, 'submitted');
+              await shiftService.updateShiftStatus(
+                currentShift.id,
+                'submitted',
+              );
               Alert.alert('Success', 'Section report submitted successfully!');
               navigation.goBack();
             } catch (err) {
-              Alert.alert('Error', 'Failed to submit report. Please try again.');
+              Alert.alert(
+                'Error',
+                'Failed to submit report. Please try again.',
+              );
             } finally {
               setIsSubmitting(false);
             }
@@ -116,12 +132,18 @@ const SectionReportScreen: React.FC = () => {
 
   const handleSaveDraft = async () => {
     if (!currentShift) {
-      Alert.alert('No Active Shift', 'There is no active shift to save a draft for.');
+      Alert.alert(
+        'No Active Shift',
+        'There is no active shift to save a draft for.',
+      );
       return;
     }
     try {
       setIsSubmitting(true);
-      await shiftService.updateHandoverNotes(currentShift.id, formData.progressRemarks || 'Draft saved');
+      await shiftService.updateHandoverNotes(
+        currentShift.id,
+        formData.progressRemarks || 'Draft saved',
+      );
       Alert.alert('Draft Saved', 'Your report has been saved as a draft.');
     } catch (err) {
       Alert.alert('Error', 'Failed to save draft. Please try again.');
@@ -220,7 +242,7 @@ const SectionReportScreen: React.FC = () => {
           <TextInput
             style={styles.statInput}
             value={formData.crewPresent}
-            onChangeText={value => updateField('crewPresent', value)}
+            onChangeText={value => updateNumericField('crewPresent', value)}
             keyboardType="numeric"
             placeholder="0"
             placeholderTextColor="#94a3b8"
@@ -231,7 +253,7 @@ const SectionReportScreen: React.FC = () => {
           <TextInput
             style={styles.statInput}
             value={formData.crewAbsent}
-            onChangeText={value => updateField('crewAbsent', value)}
+            onChangeText={value => updateNumericField('crewAbsent', value)}
             keyboardType="numeric"
             placeholder="0"
             placeholderTextColor="#94a3b8"
@@ -245,7 +267,7 @@ const SectionReportScreen: React.FC = () => {
           <TextInput
             style={styles.statInput}
             value={formData.crewLate}
-            onChangeText={value => updateField('crewLate', value)}
+            onChangeText={value => updateNumericField('crewLate', value)}
             keyboardType="numeric"
             placeholder="0"
             placeholderTextColor="#94a3b8"
@@ -256,7 +278,9 @@ const SectionReportScreen: React.FC = () => {
           <TextInput
             style={styles.statInput}
             value={formData.crewEarlyDeparture}
-            onChangeText={value => updateField('crewEarlyDeparture', value)}
+            onChangeText={value =>
+              updateNumericField('crewEarlyDeparture', value)
+            }
             keyboardType="numeric"
             placeholder="0"
             placeholderTextColor="#94a3b8"
@@ -297,7 +321,9 @@ const SectionReportScreen: React.FC = () => {
           <TextInput
             style={styles.statInput}
             value={formData.equipmentOperational}
-            onChangeText={value => updateField('equipmentOperational', value)}
+            onChangeText={value =>
+              updateNumericField('equipmentOperational', value)
+            }
             keyboardType="numeric"
             placeholder="0"
             placeholderTextColor="#94a3b8"
@@ -308,7 +334,9 @@ const SectionReportScreen: React.FC = () => {
           <TextInput
             style={styles.statInput}
             value={formData.equipmentMaintenance}
-            onChangeText={value => updateField('equipmentMaintenance', value)}
+            onChangeText={value =>
+              updateNumericField('equipmentMaintenance', value)
+            }
             keyboardType="numeric"
             placeholder="0"
             placeholderTextColor="#94a3b8"
@@ -321,7 +349,9 @@ const SectionReportScreen: React.FC = () => {
         <TextInput
           style={styles.textInput}
           value={formData.equipmentBreakdown}
-          onChangeText={value => updateField('equipmentBreakdown', value)}
+          onChangeText={value =>
+            updateNumericField('equipmentBreakdown', value)
+          }
           keyboardType="numeric"
           placeholder="0"
           placeholderTextColor="#94a3b8"
@@ -388,7 +418,9 @@ const SectionReportScreen: React.FC = () => {
           <TextInput
             style={styles.statInput}
             value={formData.incidentsReported}
-            onChangeText={value => updateField('incidentsReported', value)}
+            onChangeText={value =>
+              updateNumericField('incidentsReported', value)
+            }
             keyboardType="numeric"
             placeholder="0"
             placeholderTextColor="#94a3b8"
@@ -399,7 +431,9 @@ const SectionReportScreen: React.FC = () => {
           <TextInput
             style={styles.statInput}
             value={formData.hazardsIdentified}
-            onChangeText={value => updateField('hazardsIdentified', value)}
+            onChangeText={value =>
+              updateNumericField('hazardsIdentified', value)
+            }
             keyboardType="numeric"
             placeholder="0"
             placeholderTextColor="#94a3b8"
@@ -463,7 +497,9 @@ const SectionReportScreen: React.FC = () => {
           <TextInput
             style={styles.statInput}
             value={formData.productionTarget}
-            onChangeText={value => updateField('productionTarget', value)}
+            onChangeText={value =>
+              updateNumericField('productionTarget', value)
+            }
             keyboardType="numeric"
             placeholder="0"
             placeholderTextColor="#94a3b8"
@@ -474,7 +510,9 @@ const SectionReportScreen: React.FC = () => {
           <TextInput
             style={styles.statInput}
             value={formData.productionActual}
-            onChangeText={value => updateField('productionActual', value)}
+            onChangeText={value =>
+              updateNumericField('productionActual', value)
+            }
             keyboardType="numeric"
             placeholder="0"
             placeholderTextColor="#94a3b8"

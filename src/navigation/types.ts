@@ -1,17 +1,12 @@
 export type RootStackParamList = {
   LoginScreen: undefined;
-  RegisterScreen: undefined;
   WorkerDashboard: undefined;
   ForemanDashboard: undefined;
   OvermanDashboard: undefined;
   SupervisorDashboard: undefined;
-  AdminDashboard: undefined;
   ManagerDashboard: undefined;
   ResetPasswordScreen: undefined;
-  MainScreen: undefined;
   HomeScreen: undefined;
-  ProfileScreen: undefined;
-  SettingsScreen: undefined;
   NewShiftLogScreen: undefined;
   // Worker module screens
   MarkAttendanceScreen: undefined;

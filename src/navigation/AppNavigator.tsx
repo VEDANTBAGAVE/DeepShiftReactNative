@@ -113,6 +113,8 @@ const AppNavigator = () => {
     }
   };
 
+  const userRole = user?.role;
+
   return (
     <NavigationContainer ref={navigationRef}>
       <Stack.Navigator
@@ -124,129 +126,179 @@ const AppNavigator = () => {
       >
         <Stack.Screen name="LoginScreen" component={LoginScreen} />
         <Stack.Screen name="HomeScreen" component={HomeScreen} />
-        <Stack.Screen name="WorkerDashboard" component={WorkerDashboard} />
-        <Stack.Screen name="ForemanDashboard" component={ForemanDashboard} />
-        <Stack.Screen name="OvermanDashboard" component={OvermanDashboard} />
-        <Stack.Screen
-          name="SupervisorDashboard"
-          component={SupervisorDashboard}
-        />
-        <Stack.Screen name="ManagerDashboard" component={ManagerDashboard} />
         <Stack.Screen
           name="ResetPasswordScreen"
           component={ResetPasswordScreen}
         />
-        <Stack.Screen name="NewShiftLogScreen" component={NewShiftLogScreen} />
 
-        {/* Worker module screens */}
-        <Stack.Screen
-          name="MarkAttendanceScreen"
-          component={MarkAttendanceScreen}
-        />
-        <Stack.Screen
-          name="ReportIncidentScreen"
-          component={ReportIncidentScreen}
-        />
-        <Stack.Screen name="NewShiftScreen" component={NewShiftScreen} />
-        <Stack.Screen
-          name="ShiftHistoryScreen"
-          component={ShiftHistoryScreen}
-        />
-        <Stack.Screen name="ShiftDetailScreen" component={ShiftDetailScreen} />
-        <Stack.Screen
-          name="SupervisorRemarksScreen"
-          component={SupervisorRemarksScreen}
-        />
-        <Stack.Screen name="ViewTasksScreen" component={ViewTasksScreen} />
-        <Stack.Screen
-          name="WorkerSettingsScreen"
-          component={WorkerSettingsScreen}
-        />
+        {/* Worker screens — accessible by worker, foreman, overman, manager */}
+        {userRole === 'worker' && (
+          <Stack.Screen name="WorkerDashboard" component={WorkerDashboard} />
+        )}
+        {(userRole === 'worker' ||
+          userRole === 'foreman' ||
+          userRole === 'overman' ||
+          userRole === 'manager') && (
+          <>
+            <Stack.Screen
+              name="MarkAttendanceScreen"
+              component={MarkAttendanceScreen}
+            />
+            <Stack.Screen
+              name="ReportIncidentScreen"
+              component={ReportIncidentScreen}
+            />
+            <Stack.Screen name="NewShiftScreen" component={NewShiftScreen} />
+            <Stack.Screen
+              name="ShiftHistoryScreen"
+              component={ShiftHistoryScreen}
+            />
+            <Stack.Screen
+              name="ShiftDetailScreen"
+              component={ShiftDetailScreen}
+            />
+            <Stack.Screen
+              name="SupervisorRemarksScreen"
+              component={SupervisorRemarksScreen}
+            />
+            <Stack.Screen name="ViewTasksScreen" component={ViewTasksScreen} />
+            <Stack.Screen
+              name="WorkerSettingsScreen"
+              component={WorkerSettingsScreen}
+            />
+          </>
+        )}
 
-        {/* Foreman module screens */}
-        <Stack.Screen name="WorkerListScreen" component={WorkerListScreen} />
-        <Stack.Screen
-          name="WorkerProfileSheet"
-          component={WorkerProfileSheet}
-          options={{
-            presentation: 'modal',
-            headerShown: false,
-          }}
-        />
-        <Stack.Screen name="CreateTaskScreen" component={CreateTaskScreen} />
-        <Stack.Screen
-          name="CreateRemarkScreen"
-          component={CreateRemarkScreen}
-        />
-        <Stack.Screen
-          name="SectionReportScreen"
-          component={SectionReportScreen}
-        />
-        <Stack.Screen
-          name="SectionIncidentsScreen"
-          component={SectionIncidentsScreen}
-        />
-        <Stack.Screen
-          name="SubmittedReportsScreen"
-          component={SubmittedReportsScreen}
-        />
-        <Stack.Screen
-          name="NotificationsScreen"
-          component={NotificationsScreen}
-        />
-        <Stack.Screen
-          name="ForemanProfileScreen"
-          component={ForemanProfileScreen}
-        />
+        {/* Foreman screens — accessible by foreman, overman, manager */}
+        {userRole === 'foreman' && (
+          <Stack.Screen name="ForemanDashboard" component={ForemanDashboard} />
+        )}
+        {(userRole === 'foreman' ||
+          userRole === 'overman' ||
+          userRole === 'manager') && (
+          <>
+            <Stack.Screen
+              name="WorkerListScreen"
+              component={WorkerListScreen}
+            />
+            <Stack.Screen
+              name="WorkerProfileSheet"
+              component={WorkerProfileSheet}
+              options={{
+                presentation: 'modal',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="CreateTaskScreen"
+              component={CreateTaskScreen}
+            />
+            <Stack.Screen
+              name="CreateRemarkScreen"
+              component={CreateRemarkScreen}
+            />
+            <Stack.Screen
+              name="SectionReportScreen"
+              component={SectionReportScreen}
+            />
+            <Stack.Screen
+              name="SectionIncidentsScreen"
+              component={SectionIncidentsScreen}
+            />
+            <Stack.Screen
+              name="SubmittedReportsScreen"
+              component={SubmittedReportsScreen}
+            />
+            <Stack.Screen
+              name="NotificationsScreen"
+              component={NotificationsScreen}
+            />
+            <Stack.Screen
+              name="ForemanProfileScreen"
+              component={ForemanProfileScreen}
+            />
+          </>
+        )}
 
-        {/* Overman module screens */}
-        <Stack.Screen
-          name="OvermanProfileScreen"
-          component={OvermanProfileScreen}
-        />
-        <Stack.Screen
-          name="SectionReportsScreen"
-          component={SectionReportsScreen}
-        />
-        <Stack.Screen
-          name="SafetyOverviewScreen"
-          component={SafetyOverviewScreen}
-        />
-        <Stack.Screen
-          name="SectionSummaryScreen"
-          component={SectionSummaryScreen}
-        />
-        <Stack.Screen
-          name="ReviewSectionReportScreen"
-          component={ReviewSectionReportScreen}
-        />
-        <Stack.Screen
-          name="CreateShiftLogScreen"
-          component={CreateShiftLogScreen}
-        />
-        <Stack.Screen
-          name="SubmittedLogsScreen"
-          component={SubmittedLogsScreen}
-        />
-        <Stack.Screen
-          name="RemarksPanelScreen"
-          component={RemarksPanelScreen}
-        />
+        {/* Overman screens — accessible by overman and manager */}
+        {userRole === 'overman' && (
+          <>
+            <Stack.Screen
+              name="OvermanDashboard"
+              component={OvermanDashboard}
+            />
+            <Stack.Screen
+              name="SupervisorDashboard"
+              component={SupervisorDashboard}
+            />
+          </>
+        )}
+        {(userRole === 'overman' || userRole === 'manager') && (
+          <>
+            <Stack.Screen
+              name="OvermanProfileScreen"
+              component={OvermanProfileScreen}
+            />
+            <Stack.Screen
+              name="SectionReportsScreen"
+              component={SectionReportsScreen}
+            />
+            <Stack.Screen
+              name="SafetyOverviewScreen"
+              component={SafetyOverviewScreen}
+            />
+            <Stack.Screen
+              name="SectionSummaryScreen"
+              component={SectionSummaryScreen}
+            />
+            <Stack.Screen
+              name="ReviewSectionReportScreen"
+              component={ReviewSectionReportScreen}
+            />
+            <Stack.Screen
+              name="CreateShiftLogScreen"
+              component={CreateShiftLogScreen}
+            />
+            <Stack.Screen
+              name="SubmittedLogsScreen"
+              component={SubmittedLogsScreen}
+            />
+            <Stack.Screen
+              name="RemarksPanelScreen"
+              component={RemarksPanelScreen}
+            />
+            <Stack.Screen
+              name="NewShiftLogScreen"
+              component={NewShiftLogScreen}
+            />
+          </>
+        )}
 
-        {/* Manager module screens */}
-        <Stack.Screen
-          name="ShiftReportsOverview"
-          component={ShiftReportsOverview}
-        />
-        <Stack.Screen name="ShiftLogDetail" component={ShiftLogDetail} />
-        <Stack.Screen name="SafetyAnalytics" component={SafetyAnalytics} />
-        <Stack.Screen name="EquipmentOverview" component={EquipmentOverview} />
-        <Stack.Screen name="CrewPerformance" component={CrewPerformance} />
-        <Stack.Screen
-          name="CommunicationPanel"
-          component={CommunicationPanel}
-        />
-        <Stack.Screen name="ReportsArchive" component={ReportsArchive} />
+        {/* Manager screens — accessible by manager only */}
+        {userRole === 'manager' && (
+          <>
+            <Stack.Screen
+              name="ManagerDashboard"
+              component={ManagerDashboard}
+            />
+            <Stack.Screen
+              name="ShiftReportsOverview"
+              component={ShiftReportsOverview}
+            />
+            <Stack.Screen name="ShiftLogDetail" component={ShiftLogDetail} />
+            <Stack.Screen name="SafetyAnalytics" component={SafetyAnalytics} />
+            <Stack.Screen
+              name="EquipmentOverview"
+              component={EquipmentOverview}
+            />
+            <Stack.Screen name="CrewPerformance" component={CrewPerformance} />
+            <Stack.Screen
+              name="CommunicationPanel"
+              component={CommunicationPanel}
+            />
+            <Stack.Screen name="ReportsArchive" component={ReportsArchive} />
+          </>
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );

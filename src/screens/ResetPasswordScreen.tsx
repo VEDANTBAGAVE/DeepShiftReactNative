@@ -7,11 +7,18 @@ import {
 } from 'react-native';
 import { TextInput, Button, Text, HelperText } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../services/supabase';
+import { RootStackParamList } from '../navigation/types';
+
+type ResetPasswordNav = StackNavigationProp<
+  RootStackParamList,
+  'ResetPasswordScreen'
+>;
 
 const ResetPasswordScreen: React.FC = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<ResetPasswordNav>();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [emailError, setEmailError] = useState('');
@@ -54,7 +61,6 @@ const ResetPasswordScreen: React.FC = () => {
   };
 
   const handleBackToLogin = () => {
-    // @ts-ignore - Navigate back to login
     navigation.goBack();
   };
 

@@ -8,6 +8,7 @@ import {
   ScrollView,
   TextInput,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -42,9 +43,7 @@ interface SectionDisplay {
   productionStatus: 'on-track' | 'delayed' | 'ahead';
 }
 
-const mapShiftStatus = (
-  status?: ShiftStatus,
-): SectionDisplay['status'] => {
+const mapShiftStatus = (status?: ShiftStatus): SectionDisplay['status'] => {
   switch (status) {
     case 'submitted':
       return 'pending';
@@ -77,17 +76,13 @@ const SectionSummaryScreen: React.FC = () => {
     if (!user) return;
     setIsLoading(true);
     try {
-      const [
-        fetchedSections,
-        fetchedShifts,
-        fetchedForemen,
-        fetchedIncidents,
-      ] = await Promise.all([
-        userService.getSections(),
-        shiftService.getShifts({ overman_id: user.id }),
-        userService.getUsers({ role: 'foreman', is_active: true }),
-        incidentService.getUnresolvedIncidents(),
-      ]);
+      const [fetchedSections, fetchedShifts, fetchedForemen, fetchedIncidents] =
+        await Promise.all([
+          userService.getSections(),
+          shiftService.getShifts({ overman_id: user.id }),
+          userService.getUsers({ role: 'foreman', is_active: true }),
+          incidentService.getUnresolvedIncidents(),
+        ]);
       setDbSections(fetchedSections);
       setShifts(fetchedShifts);
       setForemen(fetchedForemen);
@@ -118,13 +113,12 @@ const SectionSummaryScreen: React.FC = () => {
           mostRecentShift.shift_type.slice(1) +
           ' Shift'
         : 'No Shift';
-      const submittedAtLabel =
-        mostRecentShift?.submitted_at
-          ? new Date(mostRecentShift.submitted_at).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            })
-          : '—';
+      const submittedAtLabel = mostRecentShift?.submitted_at
+        ? new Date(mostRecentShift.submitted_at).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '—';
       const lastUpdatedLabel = mostRecentShift?.updated_at
         ? new Date(mostRecentShift.updated_at).toLocaleTimeString([], {
             hour: '2-digit',
@@ -207,14 +201,12 @@ const SectionSummaryScreen: React.FC = () => {
     reopened: sections.filter(s => s.status === 'reopened').length,
   };
 
-  const handleViewDetails = (sectionId: string, sectionName: string) => {
-    console.log('Viewing details for section:', sectionId, sectionName);
-    // TODO: Navigate to Review Section Report screen
+  const handleViewDetails = (sectionId: string, _sectionName: string) => {
+    navigation.navigate('ReviewSectionReportScreen', { sectionId });
   };
 
   const handleForemanPress = (foremanId: string, foremanName: string) => {
-    console.log('Viewing foreman profile:', foremanId, foremanName);
-    // TODO: Navigate to foreman profile or contact
+    Alert.alert('Foreman', `${foremanName}\nID: ${foremanId}`);
   };
 
   return (

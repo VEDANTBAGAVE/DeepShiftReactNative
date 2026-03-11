@@ -7,6 +7,7 @@ import { userService } from '../services/userService';
 import { useAuth } from '../context/AuthContext';
 import {
   Shift,
+  ShiftWithRelations,
   WorkerShiftLog,
   IncidentReport,
   EquipmentLog,
@@ -376,8 +377,8 @@ export function useOvermanDashboard(): OvermanDashboardData {
 }
 
 interface ManagerDashboardData {
-  allShifts: Shift[];
-  pendingApprovals: Shift[];
+  allShifts: ShiftWithRelations[];
+  pendingApprovals: ShiftWithRelations[];
   incidentSummary: any[];
   overallStats: DashboardStats;
   isLoading: boolean;
@@ -391,9 +392,15 @@ interface ManagerDashboardData {
  * Hook for Manager Dashboard data
  */
 export function useManagerDashboard(): ManagerDashboardData {
-  const { user } = useAuth();
-  const [allShifts, setAllShifts] = useState<Shift[]>([]);
-  const [pendingApprovals, setPendingApprovals] = useState<Shift[]>([]);
+  const { user, role } = useAuth();
+
+  if (role !== 'manager') {
+    throw new Error('useManagerDashboard can only be used by manager role');
+  }
+  const [allShifts, setAllShifts] = useState<ShiftWithRelations[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState<
+    ShiftWithRelations[]
+  >([]);
   const [incidentSummary, setIncidentSummary] = useState<any[]>([]);
   const [overallStats, setOverallStats] = useState<DashboardStats>({
     workersPresent: 0,
@@ -412,8 +419,8 @@ export function useManagerDashboard(): ManagerDashboardData {
     setError(null);
 
     try {
-      // Get all shifts
-      const shifts = await shiftService.getShifts();
+      // Get all shifts with worker logs, equipment, incidents joined
+      const shifts = await shiftService.getShiftsWithRelations();
       setAllShifts(shifts);
 
       // Get pending approvals
@@ -431,10 +438,24 @@ export function useManagerDashboard(): ManagerDashboardData {
       const unresolvedIncidents =
         await incidentService.getUnresolvedIncidents();
 
+      // Aggregate worker counts from today's shift worker_logs
+      const todayShiftIds = new Set(todayShifts.map(s => s.id));
+      const todayShiftsWithLogs = shifts.filter(s => todayShiftIds.has(s.id));
+      let totalPresent = 0;
+      let totalAbsent = 0;
+      let workerIdSet = new Set<string>();
+      for (const s of todayShiftsWithLogs) {
+        for (const log of s.worker_logs ?? []) {
+          workerIdSet.add(log.worker_id);
+          if (log.attendance_status === 'present') totalPresent++;
+          else totalAbsent++;
+        }
+      }
+
       setOverallStats({
-        workersPresent: 0, // Would need to aggregate from all shifts
-        workersAbsent: 0,
-        totalWorkers: 0,
+        workersPresent: totalPresent,
+        workersAbsent: totalAbsent,
+        totalWorkers: workerIdSet.size || totalPresent + totalAbsent,
         pendingIncidents: unresolvedIncidents.length,
         highSeverityIncidents: highSeverityCount,
         faultyEquipment: faultyCount,

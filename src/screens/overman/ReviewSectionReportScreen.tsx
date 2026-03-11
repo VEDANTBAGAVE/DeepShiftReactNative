@@ -68,10 +68,14 @@ const ReviewSectionReportScreen: React.FC = () => {
   const [isActing, setIsActing] = useState(false);
 
   useEffect(() => {
-    if (!reportId) { setIsLoading(false); return; }
-    shiftService.getShiftById(reportId)
+    if (!reportId) {
+      setIsLoading(false);
+      return;
+    }
+    shiftService
+      .getShiftById(reportId)
       .then(setShift)
-      .catch(console.error)
+      .catch(() => Alert.alert('Error', 'Failed to load report data.'))
       .finally(() => setIsLoading(false));
   }, [reportId]);
 
@@ -178,18 +182,31 @@ const ReviewSectionReportScreen: React.FC = () => {
   const workerLogs = shift?.worker_logs ?? [];
   const equipmentLogs = shift?.equipment_logs ?? [];
   const incidents = shift?.incidents ?? [];
-  const presentWorkers = workerLogs.filter(l => l.attendance_status === 'present').length;
-  const absentWorkers = workerLogs.filter(l => l.attendance_status === 'absent').length;
-  const faultyEquipment = equipmentLogs.filter(e => e.condition_status === 'faulty').length;
+  const presentWorkers = workerLogs.filter(
+    l => l.attendance_status === 'present',
+  ).length;
+  const absentWorkers = workerLogs.filter(
+    l => l.attendance_status === 'absent',
+  ).length;
+  const faultyEquipment = equipmentLogs.filter(
+    e => e.condition_status === 'faulty',
+  ).length;
 
   const reportData = {
     reportId: shift?.id ?? reportId,
-    sectionName: (shift as any)?.section?.section_name ?? shift?.section_id ?? '—',
+    sectionName: shift?.section?.section_name ?? shift?.section_id ?? '—',
     foremanName: 'Foreman',
-    shiftType: `${shift?.shift_type ? shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1) : '—'} Shift`,
+    shiftType: `${
+      shift?.shift_type
+        ? shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1)
+        : '—'
+    } Shift`,
     shiftDate: shift?.shift_date ?? '—',
     submittedAt: shift?.submitted_at
-      ? new Date(shift.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      ? new Date(shift.submitted_at).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        })
       : 'Not submitted',
     workers: workerLogs.map(l => ({
       id: l.id,
@@ -199,17 +216,28 @@ const ReviewSectionReportScreen: React.FC = () => {
     equipment: equipmentLogs.map(e => ({
       id: e.id,
       name: e.equipment_name,
-      condition: e.condition_status === 'faulty' ? ('faulty' as const) : ('good' as const),
+      condition:
+        e.condition_status === 'faulty'
+          ? ('faulty' as const)
+          : ('good' as const),
       remarks: e.issue_description ?? undefined,
     })),
-    safetyReadings: [] as { parameter: string; value: string; status: 'normal' | 'warning' | 'critical'; unit: string }[],
+    safetyReadings: [] as {
+      parameter: string;
+      value: string;
+      status: 'normal' | 'warning' | 'critical';
+      unit: string;
+    }[],
     incidents: incidents.map(i => ({
       id: i.id,
       type: i.incident_type,
       severity: i.severity_level as 'low' | 'medium' | 'high',
       description: i.description,
       time: i.created_at
-        ? new Date(i.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        ? new Date(i.created_at).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
         : '—',
     })),
     productionMetrics: { coalExtracted: '—', targetsAchieved: '—' },
@@ -219,7 +247,11 @@ const ReviewSectionReportScreen: React.FC = () => {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#1e3a5f" style={{ marginTop: 80 }} />
+        <ActivityIndicator
+          size="large"
+          color="#1e3a5f"
+          style={{ marginTop: 80 }}
+        />
       </SafeAreaView>
     );
   }
@@ -227,10 +259,19 @@ const ReviewSectionReportScreen: React.FC = () => {
   if (!shift) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: '#64748b', fontSize: 16 }}>Report not found</Text>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
-            <Text style={{ color: '#1e3a5f', fontWeight: '600' }}>← Go Back</Text>
+        <View
+          style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Text style={{ color: '#64748b', fontSize: 16 }}>
+            Report not found
+          </Text>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={{ marginTop: 16 }}
+          >
+            <Text style={{ color: '#1e3a5f', fontWeight: '600' }}>
+              ← Go Back
+            </Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -512,23 +553,35 @@ const ReviewSectionReportScreen: React.FC = () => {
         {/* Action Buttons */}
         <View style={styles.actionsCard}>
           <TouchableOpacity
-            style={[styles.actionButton, styles.approveButton, isActing && { opacity: 0.6 }]}
+            style={[
+              styles.actionButton,
+              styles.approveButton,
+              isActing && { opacity: 0.6 },
+            ]}
             onPress={handleApprove}
             activeOpacity={0.8}
             disabled={isActing}
           >
             <Text style={styles.actionButtonIcon}>✓</Text>
-            <Text style={styles.actionButtonText}>{isActing ? 'Saving…' : 'Approve'}</Text>
+            <Text style={styles.actionButtonText}>
+              {isActing ? 'Saving…' : 'Approve'}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.actionButton, styles.reopenButton, isActing && { opacity: 0.6 }]}
+            style={[
+              styles.actionButton,
+              styles.reopenButton,
+              isActing && { opacity: 0.6 },
+            ]}
             onPress={handleReopen}
             activeOpacity={0.8}
             disabled={isActing}
           >
             <Text style={styles.actionButtonIcon}>🔁</Text>
-            <Text style={styles.actionButtonText}>{isActing ? 'Saving…' : 'Reopen'}</Text>
+            <Text style={styles.actionButtonText}>
+              {isActing ? 'Saving…' : 'Reopen'}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity

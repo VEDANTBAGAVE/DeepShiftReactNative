@@ -17,24 +17,16 @@ import { useAuth } from '../../context/AuthContext';
 import { workerLogService } from '../../services/workerLogService';
 import { shiftService } from '../../services/shiftService';
 import { WorkerShiftLog } from '../../types/database';
+import { ShiftType } from '../../types/worker';
 
-type ShiftType = 'morning' | 'evening' | 'night';
 type PresenceStatus = 'present' | 'absent';
 
 type MarkAttendanceNavigationProp = StackNavigationProp<RootStackParamList>;
 
 const SHIFT_TYPES: { value: ShiftType; label: string; icon: string }[] = [
   { value: 'morning', label: 'Morning', icon: '🌅' },
-  { value: 'evening', label: 'Evening', icon: '☀️' },
+  { value: 'afternoon', label: 'Afternoon', icon: '☀️' },
   { value: 'night', label: 'Night', icon: '🌙' },
-];
-
-const AREAS = [
-  'Panel 5',
-  'Panel 6',
-  'Section A-12',
-  'Section B-3',
-  'Underground Level 2',
 ];
 
 const MarkAttendanceScreen: React.FC = () => {
@@ -42,7 +34,8 @@ const MarkAttendanceScreen: React.FC = () => {
   const { user } = useAuth();
 
   const [shiftType, setShiftType] = useState<ShiftType>('morning');
-  const [presenceStatus, setPresenceStatus] = useState<PresenceStatus>('present');
+  const [presenceStatus, setPresenceStatus] =
+    useState<PresenceStatus>('present');
   const [remarks, setRemarks] = useState('');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmedAt, setConfirmedAt] = useState<number | null>(null);
@@ -53,16 +46,23 @@ const MarkAttendanceScreen: React.FC = () => {
   // Fetch today's attendance log from Supabase on mount
   useEffect(() => {
     const loadTodayLog = async () => {
-      if (!user?.section_id) { setIsLoading(false); return; }
+      if (!user?.section_id) {
+        setIsLoading(false);
+        return;
+      }
       try {
         const shifts = await shiftService.getTodayShifts(user.section_id);
         if (shifts.length > 0) {
-          const log = await workerLogService.getOrCreateWorkerLog(shifts[0].id, user.id);
+          const log = await workerLogService.getOrCreateWorkerLog(
+            shifts[0].id,
+            user.id,
+          );
           setCurrentLog(log);
           if (log.attendance_status) {
             setPresenceStatus(log.attendance_status as PresenceStatus);
             setRemarks(log.remarks || '');
-            if (log.check_in_time) setConfirmedAt(new Date(log.check_in_time).getTime());
+            if (log.check_in_time)
+              setConfirmedAt(new Date(log.check_in_time).getTime());
             setSaved(log.check_in_time != null);
           }
           setShiftType((shifts[0].shift_type as ShiftType) || 'morning');
@@ -99,7 +99,10 @@ const MarkAttendanceScreen: React.FC = () => {
     try {
       const shifts = await shiftService.getTodayShifts(user.section_id);
       if (shifts.length === 0) {
-        Alert.alert('No Active Shift', 'No shift found for today in your section.');
+        Alert.alert(
+          'No Active Shift',
+          'No shift found for today in your section.',
+        );
         return;
       }
       const log = await workerLogService.markAttendance(
@@ -135,6 +138,8 @@ const MarkAttendanceScreen: React.FC = () => {
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backButton}
+          accessibilityLabel="Go back"
+          accessibilityRole="button"
         >
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
@@ -155,12 +160,15 @@ const MarkAttendanceScreen: React.FC = () => {
             <View style={styles.alreadyMarkedContent}>
               <Text style={styles.alreadyMarkedTitle}>Already Marked</Text>
               <Text style={styles.alreadyMarkedText}>
-                {currentLog.attendance_status === 'present' ? 'Present' : 'Absent'}{' '}
+                {currentLog.attendance_status === 'present'
+                  ? 'Present'
+                  : 'Absent'}{' '}
                 • {shiftType} shift
               </Text>
               {currentLog.check_in_time && (
                 <Text style={styles.alreadyMarkedTime}>
-                  Confirmed at {formatTime(new Date(currentLog.check_in_time).getTime())}
+                  Confirmed at{' '}
+                  {formatTime(new Date(currentLog.check_in_time).getTime())}
                 </Text>
               )}
             </View>
@@ -183,9 +191,11 @@ const MarkAttendanceScreen: React.FC = () => {
                   shiftType === shift.value && styles.shiftTypeCardActive,
                 ]}
                 onPress={() => {
-                  console.log('Shift type pressed:', shift.value);
                   setShiftType(shift.value);
                 }}
+                accessibilityLabel={`${shift.label} shift`}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: shiftType === shift.value }}
               >
                 <Text style={styles.shiftTypeIcon}>{shift.icon}</Text>
                 <Text
@@ -206,7 +216,9 @@ const MarkAttendanceScreen: React.FC = () => {
           <Text style={styles.label}>📍 Section</Text>
           <View style={[styles.areaButton, styles.areaButtonActive]}>
             <Text style={styles.areaButtonTextActive}>
-              {user?.section_id ? 'Your Assigned Section' : 'No section assigned'}
+              {user?.section_id
+                ? 'Your Assigned Section'
+                : 'No section assigned'}
             </Text>
           </View>
         </View>
@@ -227,9 +239,11 @@ const MarkAttendanceScreen: React.FC = () => {
                   styles.presenceTogglePresentActive,
               ]}
               onPress={() => {
-                console.log('Present pressed');
                 setPresenceStatus('present');
               }}
+              accessibilityLabel="Mark as present"
+              accessibilityRole="radio"
+              accessibilityState={{ selected: presenceStatus === 'present' }}
             >
               <Text style={styles.presenceToggleIcon}>✓</Text>
               <Text
@@ -252,9 +266,11 @@ const MarkAttendanceScreen: React.FC = () => {
                   styles.presenceToggleAbsentActive,
               ]}
               onPress={() => {
-                console.log('Absent pressed');
                 setPresenceStatus('absent');
               }}
+              accessibilityLabel="Mark as absent"
+              accessibilityRole="radio"
+              accessibilityState={{ selected: presenceStatus === 'absent' }}
             >
               <Text style={styles.presenceToggleIcon}>✕</Text>
               <Text
@@ -279,7 +295,6 @@ const MarkAttendanceScreen: React.FC = () => {
             placeholderTextColor="#94a3b8"
             value={remarks}
             onChangeText={text => {
-              console.log('Remarks changed:', text);
               setRemarks(text);
             }}
             multiline
@@ -309,9 +324,12 @@ const MarkAttendanceScreen: React.FC = () => {
                 : styles.submitButtonAbsent,
             ]}
             onPress={() => {
-              console.log('Submit button pressed');
               handleOpenConfirmModal();
             }}
+            accessibilityLabel={
+              presenceStatus === 'present' ? 'Confirm presence' : 'Mark absent'
+            }
+            accessibilityRole="button"
           >
             <Text style={styles.submitButtonText}>
               {presenceStatus === 'present'
@@ -352,7 +370,9 @@ const MarkAttendanceScreen: React.FC = () => {
 
             <View style={styles.modalInfoBox}>
               <Text style={styles.modalInfoLabel}>Location:</Text>
-              <Text style={styles.modalInfoValue}>{user?.section_id ?? 'Your Section'}</Text>
+              <Text style={styles.modalInfoValue}>
+                {user?.section_id ?? 'Your Section'}
+              </Text>
               <Text style={styles.modalInfoLabel}>Shift:</Text>
               <Text style={styles.modalInfoValue}>
                 {shiftType.toUpperCase()}
@@ -363,6 +383,8 @@ const MarkAttendanceScreen: React.FC = () => {
               <TouchableOpacity
                 style={styles.modalButtonPrimary}
                 onPress={handleConfirmPresence}
+                accessibilityLabel="Confirm I am present now"
+                accessibilityRole="button"
               >
                 <Text style={styles.modalButtonPrimaryText}>
                   ✓ Confirm I am present now
@@ -372,6 +394,8 @@ const MarkAttendanceScreen: React.FC = () => {
               <TouchableOpacity
                 style={styles.modalButtonSecondary}
                 onPress={() => setShowConfirmModal(false)}
+                accessibilityLabel="Cancel confirmation"
+                accessibilityRole="button"
               >
                 <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
               </TouchableOpacity>

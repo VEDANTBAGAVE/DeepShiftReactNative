@@ -8,6 +8,7 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  Image,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -16,6 +17,7 @@ import { useForemanDashboard } from '../../hooks/useDashboard';
 import { useAuth } from '../../context/AuthContext';
 import { TaskPriority, TaskCategory } from '../../types/worker';
 import { taskService } from '../../services/taskService';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 
 type CreateTaskScreenRouteProp = RouteProp<
   RootStackParamList,
@@ -52,6 +54,7 @@ const CreateTaskScreen: React.FC = () => {
   const [instructions, setInstructions] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
+  const [photos, setPhotos] = useState<{ id: string; uri: string }[]>([]);
 
   const allWorkers = workers;
   const selectedWorkerNames = assigneeIds
@@ -91,8 +94,8 @@ const CreateTaskScreen: React.FC = () => {
       const task = await taskService.createTask({
         title: title.trim(),
         instructions: instructions.trim() || undefined,
-        category: category as any,
-        priority: priority as any,
+        category,
+        priority,
         section_id: user.section_id,
         created_by: user.id,
         due_date: dueDate.toISOString().split('T')[0],
@@ -321,14 +324,82 @@ const CreateTaskScreen: React.FC = () => {
           <Text style={styles.charCount}>{instructions.length}/500</Text>
         </View>
 
-        {/* Photo Attachment Placeholder */}
+        {/* Photo Attachment */}
         <View style={styles.section}>
           <Text style={styles.label}>Attachments (Optional)</Text>
-          <TouchableOpacity style={styles.photoPlaceholder}>
+          {photos.length > 0 && (
+            <View style={styles.photoPreviewRow}>
+              {photos.map(p => (
+                <View key={p.id} style={styles.photoPreviewContainer}>
+                  <Image source={{ uri: p.uri }} style={styles.photoPreview} />
+                  <TouchableOpacity
+                    style={styles.photoRemoveBtn}
+                    onPress={() =>
+                      setPhotos(prev => prev.filter(x => x.id !== p.id))
+                    }
+                  >
+                    <Text style={styles.photoRemoveText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+          <TouchableOpacity
+            style={styles.photoPlaceholder}
+            onPress={() => {
+              Alert.alert('Add Photo', 'Choose a source', [
+                {
+                  text: 'Camera',
+                  onPress: () =>
+                    launchCamera(
+                      {
+                        mediaType: 'photo',
+                        quality: 0.7,
+                        maxWidth: 1280,
+                        maxHeight: 1280,
+                      },
+                      res => {
+                        if (res.didCancel || res.errorCode) return;
+                        const asset = res.assets?.[0];
+                        if (asset?.uri) {
+                          setPhotos(prev => [
+                            ...prev,
+                            { id: `photo-${Date.now()}`, uri: asset.uri! },
+                          ]);
+                        }
+                      },
+                    ),
+                },
+                {
+                  text: 'Gallery',
+                  onPress: () =>
+                    launchImageLibrary(
+                      {
+                        mediaType: 'photo',
+                        quality: 0.7,
+                        maxWidth: 1280,
+                        maxHeight: 1280,
+                        selectionLimit: 1,
+                      },
+                      res => {
+                        if (res.didCancel || res.errorCode) return;
+                        const asset = res.assets?.[0];
+                        if (asset?.uri) {
+                          setPhotos(prev => [
+                            ...prev,
+                            { id: `photo-${Date.now()}`, uri: asset.uri! },
+                          ]);
+                        }
+                      },
+                    ),
+                },
+                { text: 'Cancel', style: 'cancel' },
+              ]);
+            }}
+          >
             <Text style={styles.photoPlaceholderIcon}>📷</Text>
-            <Text style={styles.photoPlaceholderText}>Add Photo</Text>
-            <Text style={styles.photoPlaceholderHint}>
-              Photo attachment feature coming soon
+            <Text style={styles.photoPlaceholderText}>
+              {photos.length > 0 ? 'Add Another Photo' : 'Add Photo'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -597,10 +668,35 @@ const styles = StyleSheet.create({
     color: '#64748b',
     marginBottom: 4,
   },
-  photoPlaceholderHint: {
-    fontSize: 12,
-    color: '#94a3b8',
-    fontStyle: 'italic',
+  photoPreviewRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 12,
+  },
+  photoPreviewContainer: {
+    position: 'relative',
+  },
+  photoPreview: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+  },
+  photoRemoveBtn: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoRemoveText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   submitButton: {
     backgroundColor: '#3b82f6',

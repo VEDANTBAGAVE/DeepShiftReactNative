@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -16,7 +16,8 @@ import { RootStackParamList } from '../../navigation/types';
 import { useAuth } from '../../context/AuthContext';
 import { incidentService } from '../../services/incidentService';
 import { shiftService } from '../../services/shiftService';
-import { IncidentType, SeverityLevel } from '../../types/database';
+import { userService } from '../../services/userService';
+import { IncidentType, SeverityLevel, Section } from '../../types/database';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 
 type IncidentSeverity = 'low' | 'medium' | 'high';
@@ -39,24 +40,29 @@ const SEVERITIES: {
   { value: 'high', label: 'High', color: '#ef4444', icon: '🔴' },
 ];
 
-const AREAS = [
-  'Panel 5',
-  'Panel 6',
-  'Section A-12',
-  'Section B-3',
-  'Underground Level 2',
-  'Other',
-];
-
 const ReportIncidentScreen: React.FC = () => {
   const navigation = useNavigation<ReportIncidentNavigationProp>();
   const { user } = useAuth();
 
   const [description, setDescription] = useState('');
   const [severity, setSeverity] = useState<IncidentSeverity>('low');
-  const [area, setArea] = useState('Panel 5');
+  const [area, setArea] = useState('');
+  const [areas, setAreas] = useState<string[]>([]);
   const [incidentType, setIncidentType] = useState<IncidentType>('other');
   const [photos, setPhotos] = useState<Photo[]>([]);
+
+  useEffect(() => {
+    userService
+      .getSections()
+      .then((sections: Section[]) => {
+        const names = sections.map(s => s.section_name);
+        setAreas(names.length > 0 ? [...names, 'Other'] : ['Other']);
+        if (names.length > 0) setArea(names[0]);
+      })
+      .catch(() => {
+        setAreas(['Other']);
+      });
+  }, []);
 
   const handleAddPhoto = () => {
     Alert.alert('Add Photo', 'Choose a source', [
@@ -72,7 +78,15 @@ const ReportIncidentScreen: React.FC = () => {
               saveToPhotos: false,
             },
             response => {
-              if (response.didCancel || response.errorCode) return;
+              if (response.errorCode) {
+                Alert.alert(
+                  'Camera Error',
+                  response.errorMessage ||
+                    'Could not access camera. Please check permissions.',
+                );
+                return;
+              }
+              if (response.didCancel) return;
               const asset = response.assets?.[0];
               if (asset?.uri) {
                 setPhotos(prev => [
@@ -100,7 +114,15 @@ const ReportIncidentScreen: React.FC = () => {
               selectionLimit: 1,
             },
             response => {
-              if (response.didCancel || response.errorCode) return;
+              if (response.errorCode) {
+                Alert.alert(
+                  'Gallery Error',
+                  response.errorMessage ||
+                    'Could not access gallery. Please check permissions.',
+                );
+                return;
+              }
+              if (response.didCancel) return;
               const asset = response.assets?.[0];
               if (asset?.uri) {
                 setPhotos(prev => [
@@ -275,7 +297,7 @@ const ReportIncidentScreen: React.FC = () => {
             <Text style={styles.required}>*</Text>
           </View>
           <View style={styles.areaGrid}>
-            {AREAS.map(areaOption => (
+            {areas.map(areaOption => (
               <TouchableOpacity
                 key={areaOption}
                 style={[

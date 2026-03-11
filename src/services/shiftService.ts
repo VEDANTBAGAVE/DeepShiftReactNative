@@ -109,6 +109,31 @@ export const shiftService = {
   },
 
   /**
+   * Get shifts with worker logs, equipment, and incidents joined
+   */
+  getShiftsWithRelations: async (): Promise<ShiftWithRelations[]> => {
+    const { data, error } = await supabase
+      .from('shifts')
+      .select(
+        `
+        *,
+        section:sections(*),
+        overman:users!shifts_overman_id_fkey(*),
+        worker_logs:worker_shift_logs(*),
+        equipment_logs:equipment_logs(*),
+        incidents:incident_reports(*)
+      `,
+      )
+      .order('shift_date', { ascending: false });
+
+    if (error) {
+      throw new Error(`Failed to get shifts with relations: ${error.message}`);
+    }
+
+    return (data as ShiftWithRelations[]) || [];
+  },
+
+  /**
    * Get today's shifts for a section
    */
   getTodayShifts: async (sectionId?: string): Promise<Shift[]> => {

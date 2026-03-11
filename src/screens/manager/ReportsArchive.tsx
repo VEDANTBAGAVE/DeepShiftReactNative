@@ -62,6 +62,26 @@ const ReportsArchive: React.FC = () => {
           const shiftLabel = (s.shift_type.charAt(0).toUpperCase() +
             s.shift_type.slice(1)) as 'Morning' | 'Evening' | 'Night';
           const dateObj = new Date(s.shift_date);
+
+          // Compute real metrics from joined relations
+          const logs = s.worker_logs ?? [];
+          const totalWorkers = logs.length;
+          const presentWorkers = logs.filter(
+            l => l.attendance_status === 'present',
+          ).length;
+          const incidentCount = (s.incidents ?? []).length;
+          const allSafetyPassed = logs.filter(
+            l => l.safety_check_passed,
+          ).length;
+          const safetyScore =
+            totalWorkers > 0
+              ? Math.round((allSafetyPassed / totalWorkers) * 100)
+              : 100;
+          const productionRate =
+            totalWorkers > 0
+              ? Math.round((presentWorkers / totalWorkers) * 100)
+              : 100;
+
           return {
             id: s.id.slice(0, 8).toUpperCase(),
             date: dateObj.toLocaleDateString('en-US', {
@@ -70,12 +90,12 @@ const ReportsArchive: React.FC = () => {
               year: 'numeric',
             }),
             shiftType: shiftLabel,
-            area: s.section_id.slice(0, 8),
-            overmanName: s.overman_id.slice(0, 8),
+            area: s.section?.section_name ?? s.section_id.slice(0, 8),
+            overmanName: s.overman?.name ?? s.overman_id.slice(0, 8),
             overmanId: s.overman_id.slice(0, 8).toUpperCase(),
-            totalWorkers: 0,
-            presentWorkers: 0,
-            incidents: 0,
+            totalWorkers,
+            presentWorkers,
+            incidents: incidentCount,
             status: (s.status === 'archived' ? 'Archived' : 'Approved') as
               | 'Approved'
               | 'Archived',
@@ -85,8 +105,8 @@ const ReportsArchive: React.FC = () => {
               : s.submitted_at
               ? new Date(s.submitted_at).toLocaleString()
               : 'N/A',
-            safetyScore: 100,
-            productionRate: 100,
+            safetyScore,
+            productionRate,
             remarks: s.handover_notes ?? 'No remarks.',
           };
         }),
@@ -341,7 +361,13 @@ const ReportsArchive: React.FC = () => {
             </Text>
           </View>
 
-          {filteredRecords.length > 0 ? (
+          {isLoading ? (
+            <ActivityIndicator
+              size="large"
+              color="#1e3a5f"
+              style={{ marginTop: 40 }}
+            />
+          ) : filteredRecords.length > 0 ? (
             filteredRecords.map(record => (
               <View key={record.id} style={styles.recordCard}>
                 <View style={styles.recordHeader}>
@@ -437,7 +463,14 @@ const ReportsArchive: React.FC = () => {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.actionButton}
-                    onPress={() => console.log('Share:', record.id)}
+                    onPress={async () => {
+                      try {
+                        await Share.share({
+                          title: `Shift Report ${record.id}`,
+                          message: `Shift Report ${record.id}\nDate: ${record.date}\nShift: ${record.shiftType}\nArea: ${record.area}\nWorkers: ${record.presentWorkers}/${record.totalWorkers}\nIncidents: ${record.incidents}\nSafety: ${record.safetyScore}%`,
+                        });
+                      } catch {}
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={styles.actionButtonIcon}>📤</Text>

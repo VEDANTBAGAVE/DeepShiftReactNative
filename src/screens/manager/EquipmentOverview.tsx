@@ -8,6 +8,7 @@ import {
   ScrollView,
   Dimensions,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -30,8 +31,11 @@ interface Equipment {
   nextMaintenance: string;
 }
 
-function mapCondition(log: EquipmentLog): 'Functional' | 'Needs Maintenance' | 'Faulty' {
-  if (log.condition_status === 'faulty') return log.resolved_at ? 'Needs Maintenance' : 'Faulty';
+function mapCondition(
+  log: EquipmentLog,
+): 'Functional' | 'Needs Maintenance' | 'Faulty' {
+  if (log.condition_status === 'faulty')
+    return log.resolved_at ? 'Needs Maintenance' : 'Faulty';
   return 'Functional';
 }
 
@@ -62,7 +66,8 @@ const EquipmentOverview: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    equipmentService.getEquipmentLogs()
+    equipmentService
+      .getEquipmentLogs()
       .then(setLogs)
       .catch(() => {})
       .finally(() => setIsLoading(false));
@@ -85,7 +90,10 @@ const EquipmentOverview: React.FC = () => {
         location: l.section_id.slice(0, 8),
         responsiblePerson: l.reported_by.slice(0, 8),
         lastChecked: relativeTime(l.updated_at),
-        nextMaintenance: l.condition_status === 'faulty' && !l.resolved_at ? 'Immediate' : 'Scheduled',
+        nextMaintenance:
+          l.condition_status === 'faulty' && !l.resolved_at
+            ? 'Immediate'
+            : 'Scheduled',
       }));
   }, [logs]);
 
@@ -277,7 +285,11 @@ const EquipmentOverview: React.FC = () => {
 
         {/* Equipment Cards */}
         {isLoading ? (
-          <ActivityIndicator size="large" color="#1e3a5f" style={{ marginTop: 40 }} />
+          <ActivityIndicator
+            size="large"
+            color="#1e3a5f"
+            style={{ marginTop: 40 }}
+          />
         ) : filteredEquipment.length > 0 ? (
           <View style={styles.equipmentList}>
             {filteredEquipment.map(item => (
@@ -285,7 +297,12 @@ const EquipmentOverview: React.FC = () => {
                 key={item.id}
                 style={styles.equipmentCard}
                 activeOpacity={0.7}
-                onPress={() => console.log('View equipment details:', item.id)}
+                onPress={() =>
+                  Alert.alert(
+                    `Equipment: ${item.id}`,
+                    `Category: ${item.category}\nCondition: ${item.condition}\nLocation: ${item.location}`,
+                  )
+                }
               >
                 <View style={styles.equipmentHeader}>
                   <View style={styles.equipmentHeaderLeft}>

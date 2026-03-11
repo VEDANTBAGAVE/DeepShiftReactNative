@@ -8,6 +8,7 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -34,7 +35,7 @@ const SupervisorRemarksScreen: React.FC = () => {
       const result = await notificationService.getRemarks(user.id);
       setRemarks(result);
     } catch {
-      // silent
+      Alert.alert('Error', 'Failed to load remarks. Please try again.');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);

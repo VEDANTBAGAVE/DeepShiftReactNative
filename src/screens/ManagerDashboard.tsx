@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -14,6 +14,9 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { useAuth } from '../context/AuthContext';
 import { useManagerDashboard } from '../hooks/useDashboard';
+import safetyIntelligenceService, {
+  SafetyAlert,
+} from '../services/safetyIntelligenceService';
 
 const { width } = Dimensions.get('window');
 
@@ -143,6 +146,26 @@ const ManagerDashboard: React.FC = () => {
     overallStats,
     isLoading,
   } = useManagerDashboard();
+  const [ruleAlerts, setRuleAlerts] = useState<SafetyAlert[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    safetyIntelligenceService
+      .getRuleBasedAlerts()
+      .then(alerts => {
+        if (mounted) {
+          setRuleAlerts(alerts);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setRuleAlerts([]);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [allShifts, overallStats.pendingIncidents, pendingApprovalShifts.length]);
 
   // Compute derived metrics from allShifts with relations
   const activeOvermen = new Set(
@@ -354,7 +377,9 @@ const ManagerDashboard: React.FC = () => {
             value={shiftData.criticalIncidents.toString()}
             subtitle="requiring immediate attention"
             trend="up"
-            trendValue="1 new today"
+            trendValue={`${
+              ruleAlerts.filter(a => a.severity === 'critical').length
+            } rule alerts`}
             color="#ef4444"
           />
 
@@ -386,7 +411,10 @@ const ManagerDashboard: React.FC = () => {
               icon="�️"
               title="Safety Analytics"
               subtitle="Compliance & incidents"
-              badge={shiftData.openIssues.toString()}
+              badge={Math.max(
+                shiftData.openIssues,
+                ruleAlerts.length,
+              ).toString()}
               badgeColor="#ef4444"
               onPress={handleSafetyReports}
             />
@@ -411,15 +439,16 @@ const ManagerDashboard: React.FC = () => {
             <Text style={styles.alertsIcon}>🔔</Text>
             <Text style={styles.alertsTitle}>Real-time Alerts</Text>
           </View>
-          <Text style={styles.alertsText}>
-            • Section A-7 reported equipment malfunction (15 min ago)
-          </Text>
-          <Text style={styles.alertsText}>
-            • Overman Sharma submitted shift log for approval (22 min ago)
-          </Text>
-          <Text style={styles.alertsText}>
-            • Safety score dropped to 94% - Review recommended (1 hr ago)
-          </Text>
+          {ruleAlerts.length === 0 ? (
+            <Text style={styles.alertsText}>• No active rule-based alerts</Text>
+          ) : (
+            ruleAlerts.slice(0, 3).map(alert => (
+              <Text key={alert.id} style={styles.alertsText}>
+                • [{alert.severity.toUpperCase()}] {alert.title}:{' '}
+                {alert.message}
+              </Text>
+            ))
+          )}
         </View>
 
         {/* Reports & Archive Section */}

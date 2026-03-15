@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import nlpRiskService from './nlpRiskService';
 
 export type RemarkSeverity = 'info' | 'warning';
 
@@ -9,6 +10,9 @@ export interface DBRemark {
   message: string;
   severity: RemarkSeverity;
   requires_action: boolean;
+  risk_score: number;
+  risk_category: 'low' | 'medium' | 'high';
+  risk_flag: boolean;
   acknowledged_at: string | null;
   created_at: string;
   foreman?: { id: string; name: string };
@@ -25,6 +29,8 @@ export const remarkService = {
     severity: RemarkSeverity = 'info',
     requiresAction: boolean = false,
   ): Promise<DBRemark> => {
+    const nlp = nlpRiskService.analyzeText(message);
+
     const { data, error } = await supabase
       .from('remarks')
       .insert({
@@ -33,6 +39,9 @@ export const remarkService = {
         message,
         severity,
         requires_action: requiresAction,
+        risk_score: nlp.riskScore,
+        risk_category: nlp.riskCategory,
+        risk_flag: nlp.riskFlag,
       })
       .select('*, foreman:users!remarks_foreman_id_fkey(id, name)')
       .single();

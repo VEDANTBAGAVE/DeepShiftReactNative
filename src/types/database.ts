@@ -105,6 +105,9 @@ export interface IncidentReport {
   resolved_at: string | null;
   resolved_by: string | null;
   resolution_notes: string | null;
+  risk_score: number;
+  risk_category: 'low' | 'medium' | 'high';
+  risk_flag: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -154,6 +157,9 @@ export interface Task {
   created_by: string;
   due_date: string | null;
   status: TaskStatus;
+  risk_score: number;
+  risk_category: 'low' | 'medium' | 'high';
+  risk_flag: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -5,6 +5,7 @@ import {
   SeverityLevel,
   IncidentReportWithRelations,
 } from '../types/database';
+import nlpRiskService from './nlpRiskService';
 
 export interface CreateIncidentData {
   shift_id: string;
@@ -34,11 +35,18 @@ export const incidentService = {
    * Create a new incident report
    */
   createIncident: async (data: CreateIncidentData): Promise<IncidentReport> => {
+    const nlp = nlpRiskService.analyzeText(
+      `${data.title || ''} ${data.description || ''}`,
+    );
+
     const { data: incident, error } = await supabase
       .from('incident_reports')
       .insert({
         ...data,
         is_resolved: false,
+        risk_score: nlp.riskScore,
+        risk_category: nlp.riskCategory,
+        risk_flag: nlp.riskFlag,
       })
       .select()
       .single();

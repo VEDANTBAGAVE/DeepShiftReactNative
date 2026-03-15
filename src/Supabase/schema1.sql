@@ -185,6 +185,9 @@ CREATE TABLE incident_reports (
     resolved_at TIMESTAMPTZ,
     resolved_by UUID REFERENCES users(id) ON DELETE SET NULL,
     resolution_notes TEXT,
+    risk_score INTEGER NOT NULL DEFAULT 0,
+    risk_category VARCHAR(10) NOT NULL DEFAULT 'low' CHECK (risk_category IN ('low', 'medium', 'high')),
+    risk_flag BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -199,6 +202,8 @@ CREATE INDEX idx_incident_reports_severity ON incident_reports(severity_level);
 CREATE INDEX idx_incident_reports_reported_by ON incident_reports(reported_by);
 CREATE INDEX idx_incident_reports_created_at ON incident_reports(created_at);
 CREATE INDEX idx_incident_reports_is_resolved ON incident_reports(is_resolved);
+CREATE INDEX idx_incident_reports_risk_flag ON incident_reports(risk_flag);
+CREATE INDEX idx_incident_reports_risk_category ON incident_reports(risk_category);
 
 -- ============================================
 -- TABLE: approvals
@@ -566,6 +571,9 @@ CREATE TABLE tasks (
     created_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     due_date DATE,
     status task_status NOT NULL DEFAULT 'pending',
+    risk_score INTEGER NOT NULL DEFAULT 0,
+    risk_category VARCHAR(10) NOT NULL DEFAULT 'low' CHECK (risk_category IN ('low', 'medium', 'high')),
+    risk_flag BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -577,6 +585,8 @@ CREATE INDEX idx_tasks_section_id ON tasks(section_id);
 CREATE INDEX idx_tasks_created_by ON tasks(created_by);
 CREATE INDEX idx_tasks_status ON tasks(status);
 CREATE INDEX idx_tasks_due_date ON tasks(due_date);
+CREATE INDEX idx_tasks_risk_flag ON tasks(risk_flag);
+CREATE INDEX idx_tasks_risk_category ON tasks(risk_category);
 
 -- ============================================
 -- TABLE: task_assignments
@@ -674,6 +684,9 @@ CREATE TABLE remarks (
     message TEXT NOT NULL,
     severity remark_severity NOT NULL DEFAULT 'info',
     requires_action BOOLEAN NOT NULL DEFAULT FALSE,
+    risk_score INTEGER NOT NULL DEFAULT 0,
+    risk_category VARCHAR(10) NOT NULL DEFAULT 'low' CHECK (risk_category IN ('low', 'medium', 'high')),
+    risk_flag BOOLEAN NOT NULL DEFAULT FALSE,
     acknowledged_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -684,6 +697,8 @@ COMMENT ON TABLE remarks IS 'Foreman remarks/feedback directed at individual wor
 CREATE INDEX idx_remarks_foreman_id ON remarks(foreman_id);
 CREATE INDEX idx_remarks_worker_id ON remarks(worker_id);
 CREATE INDEX idx_remarks_created_at ON remarks(created_at DESC);
+CREATE INDEX idx_remarks_risk_flag ON remarks(risk_flag);
+CREATE INDEX idx_remarks_risk_category ON remarks(risk_category);
 
 -- Enable RLS
 ALTER TABLE remarks ENABLE ROW LEVEL SECURITY;
@@ -691,6 +706,187 @@ CREATE POLICY "Allow all for development" ON remarks FOR ALL USING (true);
 
 GRANT INSERT, UPDATE, DELETE ON remarks TO authenticated;
 GRANT SELECT ON remarks TO anon, authenticated;
+
+-- ============================================
+-- PHASE 2 ANALYTICS VIEWS (Manager Intelligence)
+-- ============================================
+
+-- Operational metrics by date
+CREATE OR REPLACE VIEW v_manager_operational_metrics AS
+SELECT
+    s.shift_date,
+    COUNT(DISTINCT s.id) AS total_shifts,
+    COUNT(DISTINCT wsl.id) FILTER (WHERE wsl.attendance_status = 'present') AS workers_present,
+    COUNT(DISTINCT s.id) FILTER (WHERE s.status = 'submitted') AS pending_approvals
+FROM shifts s
+LEFT JOIN worker_shift_logs wsl ON wsl.shift_id = s.id
+GROUP BY s.shift_date;
+
+-- Safety metrics by date/section/type/severity
+CREATE OR REPLACE VIEW v_manager_safety_metrics AS
+SELECT
+    DATE(ir.created_at) AS incident_date,
+    ir.section_id,
+    sec.section_name,
+    ir.incident_type,
+    ir.severity_level,
+    COUNT(*) AS incident_count,
+    COUNT(*) FILTER (WHERE ir.incident_type = 'PPE') AS ppe_violations,
+    COUNT(*) FILTER (WHERE ir.severity_level = 'high') AS high_severity_count
+FROM incident_reports ir
+LEFT JOIN sections sec ON sec.id = ir.section_id
+GROUP BY DATE(ir.created_at), ir.section_id, sec.section_name, ir.incident_type, ir.severity_level;
+
+-- Equipment failure analytics by date and equipment
+CREATE OR REPLACE VIEW v_manager_equipment_metrics AS
+SELECT
+    DATE(el.created_at) AS log_date,
+    el.section_id,
+    sec.section_name,
+    el.equipment_name,
+    COUNT(*) FILTER (WHERE el.condition_status = 'faulty') AS failure_count,
+    MAX(el.created_at) FILTER (WHERE el.condition_status = 'faulty') AS last_failure_at
+FROM equipment_logs el
+LEFT JOIN sections sec ON sec.id = el.section_id
+GROUP BY DATE(el.created_at), el.section_id, sec.section_name, el.equipment_name;
+
+-- Weighted risk score per section
+CREATE OR REPLACE VIEW v_manager_section_risk_scores AS
+WITH incident_risk AS (
+    SELECT
+        ir.section_id,
+        SUM(
+            CASE
+                WHEN ir.severity_level = 'high' THEN 3
+                WHEN ir.severity_level = 'medium' THEN 2
+                ELSE 1
+            END
+        ) AS incident_risk_score
+    FROM incident_reports ir
+    GROUP BY ir.section_id
+),
+equipment_risk AS (
+    SELECT
+        el.section_id,
+        COUNT(*) FILTER (WHERE el.condition_status = 'faulty') AS equipment_risk_score
+    FROM equipment_logs el
+    GROUP BY el.section_id
+)
+SELECT
+    sec.id AS section_id,
+    sec.section_name,
+    COALESCE(ir.incident_risk_score, 0) + COALESCE(er.equipment_risk_score, 0) AS risk_score,
+    COALESCE(ir.incident_risk_score, 0) AS incident_risk_component,
+    COALESCE(er.equipment_risk_score, 0) AS equipment_risk_component
+FROM sections sec
+LEFT JOIN incident_risk ir ON ir.section_id = sec.id
+LEFT JOIN equipment_risk er ON er.section_id = sec.id;
+
+-- Shift completion rate by date
+CREATE OR REPLACE VIEW v_shift_completion_rate AS
+SELECT
+    s.shift_date,
+    COUNT(*) FILTER (WHERE s.status IN ('submitted', 'approved', 'archived')) AS tracked_shifts,
+    COUNT(*) FILTER (WHERE s.status IN ('approved', 'archived')) AS completed_shifts,
+    CASE
+        WHEN COUNT(*) FILTER (WHERE s.status IN ('submitted', 'approved', 'archived')) = 0 THEN 0
+        ELSE ROUND(
+            (COUNT(*) FILTER (WHERE s.status IN ('approved', 'archived'))::NUMERIC /
+            COUNT(*) FILTER (WHERE s.status IN ('submitted', 'approved', 'archived'))::NUMERIC) * 100,
+            2
+        )
+    END AS completion_rate_percent
+FROM shifts s
+GROUP BY s.shift_date;
+
+-- Consolidated NLP risk-tagged logs across incidents, remarks, and tasks
+CREATE OR REPLACE VIEW v_nlp_risk_logs AS
+SELECT
+    'incident_reports'::TEXT AS source_table,
+    ir.id AS source_id,
+    ir.section_id,
+    ir.description AS text_content,
+    ir.risk_score,
+    ir.risk_category,
+    ir.risk_flag,
+    ir.created_at
+FROM incident_reports ir
+UNION ALL
+SELECT
+    'remarks'::TEXT AS source_table,
+    r.id AS source_id,
+    NULL::UUID AS section_id,
+    r.message AS text_content,
+    r.risk_score,
+    r.risk_category,
+    r.risk_flag,
+    r.created_at
+FROM remarks r
+UNION ALL
+SELECT
+    'tasks'::TEXT AS source_table,
+    t.id AS source_id,
+    t.section_id,
+    COALESCE(t.instructions, t.title) AS text_content,
+    t.risk_score,
+    t.risk_category,
+    t.risk_flag,
+    t.created_at
+FROM tasks t;
+
+-- ============================================
+-- PHASE 4 NLP MIGRATION PATCH (for existing DBs)
+-- Safe to run on already-provisioned environments
+-- ============================================
+
+ALTER TABLE incident_reports
+    ADD COLUMN IF NOT EXISTS risk_score INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS risk_category VARCHAR(10) NOT NULL DEFAULT 'low',
+    ADD COLUMN IF NOT EXISTS risk_flag BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE tasks
+    ADD COLUMN IF NOT EXISTS risk_score INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS risk_category VARCHAR(10) NOT NULL DEFAULT 'low',
+    ADD COLUMN IF NOT EXISTS risk_flag BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE remarks
+    ADD COLUMN IF NOT EXISTS risk_score INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS risk_category VARCHAR(10) NOT NULL DEFAULT 'low',
+    ADD COLUMN IF NOT EXISTS risk_flag BOOLEAN NOT NULL DEFAULT FALSE;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'incident_reports_risk_category_check'
+    ) THEN
+        ALTER TABLE incident_reports
+            ADD CONSTRAINT incident_reports_risk_category_check
+            CHECK (risk_category IN ('low', 'medium', 'high'));
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'tasks_risk_category_check'
+    ) THEN
+        ALTER TABLE tasks
+            ADD CONSTRAINT tasks_risk_category_check
+            CHECK (risk_category IN ('low', 'medium', 'high'));
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'remarks_risk_category_check'
+    ) THEN
+        ALTER TABLE remarks
+            ADD CONSTRAINT remarks_risk_category_check
+            CHECK (risk_category IN ('low', 'medium', 'high'));
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_incident_reports_risk_flag ON incident_reports(risk_flag);
+CREATE INDEX IF NOT EXISTS idx_incident_reports_risk_category ON incident_reports(risk_category);
+CREATE INDEX IF NOT EXISTS idx_tasks_risk_flag ON tasks(risk_flag);
+CREATE INDEX IF NOT EXISTS idx_tasks_risk_category ON tasks(risk_category);
+CREATE INDEX IF NOT EXISTS idx_remarks_risk_flag ON remarks(risk_flag);
+CREATE INDEX IF NOT EXISTS idx_remarks_risk_category ON remarks(risk_category);
 
 -- ============================================
 -- END OF SCHEMA

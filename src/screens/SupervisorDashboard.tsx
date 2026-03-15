@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,6 +10,9 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
+import safetyIntelligenceService, {
+  SafetyAlert,
+} from '../services/safetyIntelligenceService';
 
 type SupervisorDashboardNavigationProp =
   StackNavigationProp<RootStackParamList>;
@@ -51,6 +54,7 @@ const FeatureCard: React.FC<FeatureCardProps> = ({
 
 const SupervisorDashboard: React.FC = () => {
   const navigation = useNavigation<SupervisorDashboardNavigationProp>();
+  const [ruleAlerts, setRuleAlerts] = useState<SafetyAlert[]>([]);
 
   // Demo data for shift summary
   const [shiftData] = useState({
@@ -62,6 +66,25 @@ const SupervisorDashboard: React.FC = () => {
     incidentsReported: 1,
     safetyScore: 92,
   });
+
+  useEffect(() => {
+    let mounted = true;
+    safetyIntelligenceService
+      .getRuleBasedAlerts()
+      .then(alerts => {
+        if (mounted) {
+          setRuleAlerts(alerts);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setRuleAlerts([]);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleLogout = () => {
     navigation.navigate('HomeScreen');
@@ -161,9 +184,7 @@ const SupervisorDashboard: React.FC = () => {
             subtitle="Incidents & compliance"
             onPress={handleSafetyOverview}
             badge={
-              shiftData.incidentsReported > 0
-                ? shiftData.incidentsReported.toString()
-                : undefined
+              ruleAlerts.length > 0 ? ruleAlerts.length.toString() : undefined
             }
             badgeColor="#ef4444"
           />
@@ -178,7 +199,13 @@ const SupervisorDashboard: React.FC = () => {
             title="Remarks Panel"
             subtitle="Chat with foremen"
             onPress={handleRemarksPanel}
-            badge="3"
+            badge={
+              ruleAlerts.filter(a => a.type === 'operational').length > 0
+                ? ruleAlerts
+                    .filter(a => a.type === 'operational')
+                    .length.toString()
+                : undefined
+            }
             badgeColor="#3b82f6"
           />
           <FeatureCard
@@ -202,9 +229,18 @@ const SupervisorDashboard: React.FC = () => {
             <Text style={styles.liveText}>Live Updates</Text>
           </View>
           <Text style={styles.updateText}>
-            {shiftData.pendingReports} reports pending •{' '}
-            {shiftData.incidentsReported} incident reported
+            {ruleAlerts.length === 0
+              ? `${shiftData.pendingReports} reports pending • ${shiftData.incidentsReported} incident reported`
+              : `${ruleAlerts.length} rule-based alerts active`}
           </Text>
+          {ruleAlerts.slice(0, 2).map(alert => (
+            <Text
+              key={alert.id}
+              style={[styles.updateText, { marginTop: 6, fontSize: 12 }]}
+            >
+              • [{alert.severity.toUpperCase()}] {alert.title}
+            </Text>
+          ))}
         </View>
 
         {/* Safety Score Widget */}

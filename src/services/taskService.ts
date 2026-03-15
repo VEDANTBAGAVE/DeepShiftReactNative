@@ -6,6 +6,7 @@ import {
   TaskPriorityDB,
   TaskCategoryDB,
 } from '../types/database';
+import nlpRiskService from './nlpRiskService';
 
 export interface CreateTaskInput {
   title: string;
@@ -20,6 +21,10 @@ export interface CreateTaskInput {
 
 export const taskService = {
   async createTask(input: CreateTaskInput): Promise<Task> {
+    const nlp = nlpRiskService.analyzeText(
+      `${input.title || ''} ${input.instructions || ''}`,
+    );
+
     const { data, error } = await supabase
       .from('tasks')
       .insert({
@@ -32,6 +37,9 @@ export const taskService = {
         created_by: input.created_by,
         due_date: input.due_date ?? null,
         status: 'pending',
+        risk_score: nlp.riskScore,
+        risk_category: nlp.riskCategory,
+        risk_flag: nlp.riskFlag,
       })
       .select()
       .single();

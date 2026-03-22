@@ -6,13 +6,14 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { useAuth } from '../context/AuthContext';
 import { useWorkerDashboard } from '../hooks/useDashboard';
+import { notificationService } from '../services/notificationService';
+import { taskService } from '../services/taskService';
 
 type WorkerDashboardNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -31,7 +32,12 @@ const FeatureCard: React.FC<FeatureCardProps> = ({
   onPress,
   badge,
 }) => (
-  <TouchableOpacity style={styles.featureCard} onPress={onPress}>
+  <TouchableOpacity
+    style={styles.featureCard}
+    onPress={onPress}
+    accessibilityRole="button"
+    accessibilityLabel={`${title}. ${subtitle}`}
+  >
     {badge && (
       <View style={styles.badge}>
         <Text style={styles.badgeText}>{badge}</Text>
@@ -46,32 +52,51 @@ const FeatureCard: React.FC<FeatureCardProps> = ({
 const WorkerDashboard: React.FC = () => {
   const navigation = useNavigation<WorkerDashboardNavigationProp>();
   const { user, logout } = useAuth();
-  const { currentShift, workerLog, todayIncidents, isLoading, refreshData } = useWorkerDashboard();
+  const { currentShift, workerLog, todayIncidents, isLoading, refreshData } =
+    useWorkerDashboard();
+  const [tasksCount, setTasksCount] = React.useState(0);
+  const [unreadRemarks, setUnreadRemarks] = React.useState(0);
+
+  const fetchCounters = React.useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const [tasks, unread] = await Promise.all([
+        taskService.getTasksForWorker(user.id),
+        notificationService.getUnreadCount(user.id),
+      ]);
+
+      setTasksCount(
+        tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled')
+          .length,
+      );
+      setUnreadRemarks(unread);
+    } catch {
+      setTasksCount(0);
+      setUnreadRemarks(0);
+    }
+  }, [user?.id]);
 
   // Refresh data when screen focuses
   useFocusEffect(
     React.useCallback(() => {
       refreshData();
-    }, [refreshData]),
+      fetchCounters();
+    }, [refreshData, fetchCounters]),
   );
 
   const stats = {
     attendanceMarked: workerLog?.attendance_status === 'present',
-    tasksCount: 0,
+    tasksCount,
     incidentsCount: todayIncidents.length,
-    unreadRemarks: 0,
+    unreadRemarks,
   };
 
   const handleLogout = async () => {
     await logout();
-    navigation.navigate('HomeScreen');
+    navigation.reset({ index: 0, routes: [{ name: 'LoginScreen' }] });
   };
 
-  const handleMarkAttendance = () => {
-    navigation.navigate('MarkAttendanceScreen');
-  };
-
-  const handleReportIncident = () => {
+  const handleIncidentViewer = () => {
     navigation.navigate('ReportIncidentScreen');
   };
 
@@ -92,6 +117,14 @@ const WorkerDashboard: React.FC = () => {
     navigation.navigate('SupervisorRemarksScreen');
   };
 
+  const handleAttendanceHistory = () => {
+    navigation.navigate('ShiftHistoryScreen');
+  };
+
+  const handleRaiseVerificationDispute = () => {
+    navigation.navigate('WorkerFeedbackScreen');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header Bar with Role Badge */}
@@ -106,6 +139,8 @@ const WorkerDashboard: React.FC = () => {
           <TouchableOpacity
             style={styles.notificationIcon}
             onPress={handleNotifications}
+            accessibilityRole="button"
+            accessibilityLabel="Open supervisor remarks notifications"
           >
             <Text style={styles.notificationIconText}>🔔</Text>
             {stats.unreadRemarks > 0 && <View style={styles.notificationDot} />}
@@ -113,6 +148,8 @@ const WorkerDashboard: React.FC = () => {
           <TouchableOpacity
             style={styles.profileIcon}
             onPress={handleProfileSettings}
+            accessibilityRole="button"
+            accessibilityLabel="Open worker settings"
           >
             <Text style={styles.profileIconText}>👤</Text>
           </TouchableOpacity>
@@ -122,50 +159,64 @@ const WorkerDashboard: React.FC = () => {
       {/* Current Shift Info Banner */}
       <View style={styles.shiftBanner}>
         <Text style={styles.shiftBannerText}>
-          🕐 {currentShift?.shift_type || 'No Active Shift'} | 📍 Emp: {user?.employee_code || 'N/A'} | {isLoading ? 'Loading...' : currentShift ? 'Shift Active' : 'No Shift Today'}
+          🕐 {currentShift?.shift_type || 'No Recorded Shift'} | 📍 Emp:{' '}
+          {user?.employee_code || 'N/A'} |{' '}
+          {isLoading
+            ? 'Loading...'
+            : currentShift
+            ? 'Records Available'
+            : 'No Records Today'}
         </Text>
       </View>
 
       <ScrollView style={styles.scrollView}>
         {/* Welcome Message */}
         <View style={styles.welcomeCard}>
-          <Text style={styles.welcomeTitle}>Welcome, {user?.name || 'Worker'}!</Text>
+          <Text style={styles.welcomeTitle}>
+            Welcome, {user?.name || 'Worker'}!
+          </Text>
           <Text style={styles.welcomeText}>
-            Mark your attendance, report incidents, and view your daily tasks
-            assigned by your foreman.
+            View your attendance and shift history, tasks, safety updates, and
+            remarks. Operational reporting is handled by foreman/supervisor.
           </Text>
         </View>
 
         {/* Feature Grid */}
         <View style={styles.featureGrid}>
           <FeatureCard
-            icon="✅"
-            title="Mark Attendance"
-            subtitle="Present / Absent"
-            onPress={handleMarkAttendance}
+            icon="📅"
+            title="Attendance History"
+            subtitle="View marked records"
+            onPress={handleAttendanceHistory}
           />
           <FeatureCard
             icon="⚠️"
-            title="Report Incident"
-            subtitle="With Photo Upload"
-            onPress={handleReportIncident}
+            title="Incident Reports"
+            subtitle="Section safety updates"
+            onPress={handleIncidentViewer}
           />
           <FeatureCard
             icon="📋"
             title="View Tasks"
-            subtitle="Today's Assignment"
+            subtitle="Assigned task records"
             onPress={handleViewTasks}
           />
           <FeatureCard
             icon="💬"
-            title="Foreman Remarks"
-            subtitle="Messages & Notes"
+            title="Supervisor Remarks"
+            subtitle="Foreman/Supervisor notes"
             onPress={handleSupervisorRemarks}
             badge={
               stats.unreadRemarks > 0
                 ? stats.unreadRemarks.toString()
                 : undefined
             }
+          />
+          <FeatureCard
+            icon="🛡️"
+            title="Safety Feedback"
+            subtitle="Submit post-shift report"
+            onPress={handleRaiseVerificationDispute}
           />
         </View>
 
@@ -175,7 +226,7 @@ const WorkerDashboard: React.FC = () => {
           <View style={styles.statusRow}>
             <Text style={styles.statusItem}>
               {stats.attendanceMarked ? '✅' : '⏺'} Attendance:{' '}
-              {stats.attendanceMarked ? 'Marked' : 'Not marked'}
+              {stats.attendanceMarked ? 'Recorded' : 'No record'}
             </Text>
             <Text style={styles.statusItem}>
               📋 Tasks: {stats.tasksCount} assigned
@@ -186,13 +237,18 @@ const WorkerDashboard: React.FC = () => {
               ⚠️ Incidents: {stats.incidentsCount} reported
             </Text>
             <Text style={styles.statusItem}>
-              💬 Messages: {stats.unreadRemarks} new
+              💬 Remarks: {stats.unreadRemarks} new
             </Text>
           </View>
         </View>
 
         {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={handleLogout}
+          accessibilityRole="button"
+          accessibilityLabel="Logout from worker account"
+        >
           <Text style={styles.logoutButtonText}>🚪 Logout</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -200,7 +256,8 @@ const WorkerDashboard: React.FC = () => {
       {/* Bottom Info Bar */}
       <View style={styles.bottomBar}>
         <Text style={styles.bottomBarText}>
-          📊 {stats.incidentsCount} incidents reported • Attendance: {stats.attendanceMarked ? 'Marked ✓' : 'Not marked'}
+          📊 {stats.incidentsCount} incidents in section • Attendance:{' '}
+          {stats.attendanceMarked ? 'Recorded ✓' : 'No record'}
         </Text>
       </View>
     </SafeAreaView>

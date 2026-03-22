@@ -17,6 +17,7 @@ export type RootStackParamList = {
   ShiftDetailScreen: { shiftId: string };
   SupervisorRemarksScreen: undefined;
   ViewTasksScreen: undefined;
+  WorkerFeedbackScreen: undefined;
   WorkerSettingsScreen: undefined;
   // Foreman module screens
   WorkerListScreen: undefined;
@@ -37,6 +38,7 @@ export type RootStackParamList = {
   ReviewSectionReportScreen: { sectionId?: string; reportId?: string };
   RemarksPanelScreen: undefined;
   OvermanProfileScreen: undefined;
+  FeedbackReviewScreen: undefined;
   // Manager module screens
   ShiftReportsOverview: undefined;
   ShiftLogDetail: { reportId?: string };

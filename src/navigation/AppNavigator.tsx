@@ -20,14 +20,14 @@ import HomeScreen from '../screens/HomeScreen';
 import NewShiftLogScreen from '../screens/NewShiftLogScreen';
 
 // Worker module screens
-import MarkAttendanceScreen from '../screens/worker/MarkAttendanceScreen';
 import ReportIncidentScreen from '../screens/worker/ReportIncidentScreen';
-import NewShiftScreen from '../screens/worker/NewShiftScreen';
 import ShiftHistoryScreen from '../screens/worker/ShiftHistoryScreen';
 import ShiftDetailScreen from '../screens/worker/ShiftDetailScreen';
 import SupervisorRemarksScreen from '../screens/worker/SupervisorRemarksScreen';
 import ViewTasksScreen from '../screens/worker/ViewTasksScreen';
+import WorkerFeedbackScreen from '../screens/worker/WorkerFeedbackScreen';
 import WorkerSettingsScreen from '../screens/worker/WorkerSettingsScreen';
+import FeedbackReviewScreen from '../screens/FeedbackReviewScreen';
 
 // Foreman module screens
 import WorkerListScreen from '../screens/foreman/WorkerListScreen';
@@ -131,24 +131,45 @@ const AppNavigator = () => {
           component={ResetPasswordScreen}
         />
 
-        {/* Worker screens — accessible by worker, foreman, overman, manager */}
+        {/* Worker screens — worker viewer portal */}
         {userRole === 'worker' && (
-          <Stack.Screen name="WorkerDashboard" component={WorkerDashboard} />
-        )}
-        {(userRole === 'worker' ||
-          userRole === 'foreman' ||
-          userRole === 'overman' ||
-          userRole === 'manager') && (
           <>
-            <Stack.Screen
-              name="MarkAttendanceScreen"
-              component={MarkAttendanceScreen}
-            />
+            <Stack.Screen name="WorkerDashboard" component={WorkerDashboard} />
             <Stack.Screen
               name="ReportIncidentScreen"
               component={ReportIncidentScreen}
             />
-            <Stack.Screen name="NewShiftScreen" component={NewShiftScreen} />
+            <Stack.Screen
+              name="ShiftHistoryScreen"
+              component={ShiftHistoryScreen}
+            />
+            <Stack.Screen
+              name="ShiftDetailScreen"
+              component={ShiftDetailScreen}
+            />
+            <Stack.Screen
+              name="SupervisorRemarksScreen"
+              component={SupervisorRemarksScreen}
+            />
+            <Stack.Screen name="ViewTasksScreen" component={ViewTasksScreen} />
+            <Stack.Screen
+              name="WorkerFeedbackScreen"
+              component={WorkerFeedbackScreen}
+            />
+            <Stack.Screen
+              name="WorkerSettingsScreen"
+              component={WorkerSettingsScreen}
+            />
+          </>
+        )}
+        {(userRole === 'foreman' ||
+          userRole === 'overman' ||
+          userRole === 'manager') && (
+          <>
+            <Stack.Screen
+              name="ReportIncidentScreen"
+              component={ReportIncidentScreen}
+            />
             <Stack.Screen
               name="ShiftHistoryScreen"
               component={ShiftHistoryScreen}
@@ -266,6 +287,10 @@ const AppNavigator = () => {
             <Stack.Screen
               name="RemarksPanelScreen"
               component={RemarksPanelScreen}
+            />
+            <Stack.Screen
+              name="FeedbackReviewScreen"
+              component={FeedbackReviewScreen}
             />
             <Stack.Screen
               name="NewShiftLogScreen"

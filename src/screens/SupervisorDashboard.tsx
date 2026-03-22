@@ -10,9 +10,13 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
+import { useAuth } from '../context/AuthContext';
 import safetyIntelligenceService, {
   SafetyAlert,
 } from '../services/safetyIntelligenceService';
+import workerFeedbackService from '../services/workerFeedbackService';
+import { shiftService } from '../services/shiftService';
+import { userService } from '../services/userService';
 
 type SupervisorDashboardNavigationProp =
   StackNavigationProp<RootStackParamList>;
@@ -54,17 +58,18 @@ const FeatureCard: React.FC<FeatureCardProps> = ({
 
 const SupervisorDashboard: React.FC = () => {
   const navigation = useNavigation<SupervisorDashboardNavigationProp>();
+  const { user, logout } = useAuth();
   const [ruleAlerts, setRuleAlerts] = useState<SafetyAlert[]>([]);
+  const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0);
 
-  // Demo data for shift summary
-  const [shiftData] = useState({
-    currentShift: 'Morning Shift',
-    shiftTime: '06:00 AM - 02:00 PM',
-    totalSections: 8,
-    totalWorkers: 47,
-    pendingReports: 3,
-    incidentsReported: 1,
-    safetyScore: 92,
+  const [shiftData, setShiftData] = useState({
+    currentShift: 'No Active Shift',
+    shiftTime: '—',
+    totalSections: 0,
+    totalWorkers: 0,
+    pendingReports: 0,
+    incidentsReported: 0,
+    safetyScore: 0,
   });
 
   useEffect(() => {
@@ -86,8 +91,73 @@ const SupervisorDashboard: React.FC = () => {
     };
   }, []);
 
-  const handleLogout = () => {
-    navigation.navigate('HomeScreen');
+  useEffect(() => {
+    const loadPendingFeedback = async () => {
+      if (!user?.section_id) return;
+      try {
+        const pending = await workerFeedbackService.getFeedbackForSection(
+          user.section_id,
+          'pending_supervisor_review',
+        );
+        setPendingFeedbackCount(pending.length);
+      } catch {
+        setPendingFeedbackCount(0);
+      }
+    };
+    loadPendingFeedback();
+  }, [user?.section_id, ruleAlerts.length]);
+
+  useEffect(() => {
+    const loadShiftSummary = async () => {
+      if (!user?.section_id) return;
+      try {
+        const [sectionWorkers, shiftsWithRelations] = await Promise.all([
+          userService.getWorkersForSection(user.section_id),
+          shiftService.getShiftsWithRelations(),
+        ]);
+
+        const today = new Date().toISOString().split('T')[0];
+        const sectionShifts = shiftsWithRelations.filter(
+          s => s.section_id === user.section_id,
+        );
+        const todaySectionShifts = sectionShifts.filter(
+          s => s.shift_date === today,
+        );
+        const activeShift = todaySectionShifts[0] ?? sectionShifts[0] ?? null;
+
+        const shiftLogs = activeShift?.worker_logs ?? [];
+        const safetyPassed = shiftLogs.filter(l => l.safety_check_passed).length;
+        const safetyScore =
+          shiftLogs.length > 0
+            ? Math.round((safetyPassed / shiftLogs.length) * 100)
+            : 0;
+
+        setShiftData({
+          currentShift: activeShift
+            ? `${activeShift.shift_type.charAt(0).toUpperCase()}${activeShift.shift_type.slice(1)} Shift`
+            : 'No Active Shift',
+          shiftTime: activeShift
+            ? activeShift.submitted_at
+              ? `Submitted ${new Date(activeShift.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+              : 'In Progress'
+            : '—',
+          totalSections: new Set(sectionShifts.map(s => s.section_id)).size,
+          totalWorkers: sectionWorkers.length,
+          pendingReports: sectionShifts.filter(s => s.status === 'draft').length,
+          incidentsReported: activeShift?.incidents?.length ?? 0,
+          safetyScore,
+        });
+      } catch {
+        setShiftData(prev => ({ ...prev }));
+      }
+    };
+
+    loadShiftSummary();
+  }, [user?.section_id, ruleAlerts.length, pendingFeedbackCount]);
+
+  const handleLogout = async () => {
+    await logout();
+    navigation.reset({ index: 0, routes: [{ name: 'LoginScreen' }] });
   };
 
   const handleProfile = () => {
@@ -116,6 +186,10 @@ const SupervisorDashboard: React.FC = () => {
 
   const handleRemarksPanel = () => {
     navigation.navigate('RemarksPanelScreen');
+  };
+
+  const handleFeedbackReview = () => {
+    navigation.navigate('FeedbackReviewScreen');
   };
 
   return (
@@ -219,6 +293,18 @@ const SupervisorDashboard: React.FC = () => {
             title="Submitted Logs"
             subtitle="View history"
             onPress={handleSubmittedLogs}
+          />
+          <FeatureCard
+            icon="🛡️"
+            title="Worker Feedback"
+            subtitle="Review pending reports"
+            onPress={handleFeedbackReview}
+            badge={
+              pendingFeedbackCount > 0
+                ? pendingFeedbackCount.toString()
+                : undefined
+            }
+            badgeColor="#2563eb"
           />
         </View>
 

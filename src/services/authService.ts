@@ -1,6 +1,17 @@
-import { supabase } from './supabase';
+import { supabase, SUPABASE_AUTH_STORAGE_KEY } from './supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User, UserRole } from '../types/database';
+
+const clearLocalAuthState = async () => {
+  await AsyncStorage.multiRemove([
+    'user_id',
+    'user_role',
+    'user_name',
+    'employee_code',
+    'section_id',
+    SUPABASE_AUTH_STORAGE_KEY,
+  ]);
+};
 
 export interface LoginCredentials {
   email: string;
@@ -20,13 +31,40 @@ export const authService = {
    * Login with email and password using Supabase Auth
    */
   login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
-    const { data: authData, error: authError } =
+    let { data: authData, error: authError } =
       await supabase.auth.signInWithPassword({
         email: credentials.email,
         password: credentials.password,
       });
 
+    // Recover once from stale local refresh-token/session state
+    if (
+      authError &&
+      /(invalid refresh token|refresh token not found)/i.test(
+        authError.message || '',
+      )
+    ) {
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        // ignore
+      }
+      await clearLocalAuthState();
+
+      const retry = await supabase.auth.signInWithPassword({
+        email: credentials.email,
+        password: credentials.password,
+      });
+      authData = retry.data;
+      authError = retry.error;
+    }
+
     if (authError) {
+      if (/network request failed/i.test(authError?.message || '')) {
+        throw new Error(
+          'Unable to reach authentication server. Please check emulator internet and try again.',
+        );
+      }
       throw new Error(authError.message);
     }
 
@@ -43,6 +81,10 @@ export const authService = {
 
     if (userError) {
       throw new Error('Failed to fetch user profile');
+    }
+
+    if (!userData) {
+      throw new Error('User profile not found for this email');
     }
 
     // Store user info in AsyncStorage for quick access
@@ -105,13 +147,7 @@ export const authService = {
     }
 
     // Clear stored user data regardless of supabase signout success
-    await AsyncStorage.multiRemove([
-      'user_id',
-      'user_role',
-      'user_name',
-      'employee_code',
-      'section_id',
-    ]);
+    await clearLocalAuthState();
   },
 
   /**
@@ -130,6 +166,21 @@ export const authService = {
       }
 
       const { data, error } = await supabase.auth.getSession();
+
+      if (
+        error &&
+        /(invalid refresh token|refresh token not found)/i.test(
+          error.message || '',
+        )
+      ) {
+        try {
+          await supabase.auth.signOut();
+        } catch {
+          // ignore
+        }
+        await clearLocalAuthState();
+        return { isAuthenticated: false, user: null, role: null };
+      }
 
       if (error || !data?.session) {
         return { isAuthenticated: false, user: null, role: null };

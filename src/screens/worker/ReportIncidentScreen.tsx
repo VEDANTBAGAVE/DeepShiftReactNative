@@ -1,385 +1,183 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View,
+  ActivityIndicator,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  SafeAreaView,
-  ScrollView,
-  TextInput,
-  Alert,
-  Image,
+  View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/types';
 import { useAuth } from '../../context/AuthContext';
 import { incidentService } from '../../services/incidentService';
-import { shiftService } from '../../services/shiftService';
-import { userService } from '../../services/userService';
-import { IncidentType, SeverityLevel, Section } from '../../types/database';
-import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
+import { IncidentReport } from '../../types/database';
 
-type IncidentSeverity = 'low' | 'medium' | 'high';
-interface Photo {
-  id: string;
-  uri: string;
-  timestamp: number;
-}
+type IncidentViewerNavigationProp = StackNavigationProp<RootStackParamList>;
 
-type ReportIncidentNavigationProp = StackNavigationProp<RootStackParamList>;
-
-const SEVERITIES: {
-  value: IncidentSeverity;
-  label: string;
-  color: string;
-  icon: string;
-}[] = [
-  { value: 'low', label: 'Low', color: '#10b981', icon: '🟢' },
-  { value: 'medium', label: 'Medium', color: '#f59e0b', icon: '🟡' },
-  { value: 'high', label: 'High', color: '#ef4444', icon: '🔴' },
-];
+type Filter = 'all' | 'high' | 'medium' | 'low';
 
 const ReportIncidentScreen: React.FC = () => {
-  const navigation = useNavigation<ReportIncidentNavigationProp>();
+  const navigation = useNavigation<IncidentViewerNavigationProp>();
   const { user } = useAuth();
 
-  const [description, setDescription] = useState('');
-  const [severity, setSeverity] = useState<IncidentSeverity>('low');
-  const [area, setArea] = useState('');
-  const [areas, setAreas] = useState<string[]>([]);
-  const [incidentType, setIncidentType] = useState<IncidentType>('other');
-  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [incidents, setIncidents] = useState<IncidentReport[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [filter, setFilter] = useState<Filter>('all');
 
-  useEffect(() => {
-    userService
-      .getSections()
-      .then((sections: Section[]) => {
-        const names = sections.map(s => s.section_name);
-        setAreas(names.length > 0 ? [...names, 'Other'] : ['Other']);
-        if (names.length > 0) setArea(names[0]);
-      })
-      .catch(() => {
-        setAreas(['Other']);
-      });
-  }, []);
-
-  const handleAddPhoto = () => {
-    Alert.alert('Add Photo', 'Choose a source', [
-      {
-        text: 'Camera',
-        onPress: () => {
-          launchCamera(
-            {
-              mediaType: 'photo',
-              quality: 0.7,
-              maxWidth: 1280,
-              maxHeight: 1280,
-              saveToPhotos: false,
-            },
-            response => {
-              if (response.errorCode) {
-                Alert.alert(
-                  'Camera Error',
-                  response.errorMessage ||
-                    'Could not access camera. Please check permissions.',
-                );
-                return;
-              }
-              if (response.didCancel) return;
-              const asset = response.assets?.[0];
-              if (asset?.uri) {
-                setPhotos(prev => [
-                  ...prev,
-                  {
-                    id: `photo-${Date.now()}`,
-                    uri: asset.uri!,
-                    timestamp: Date.now(),
-                  },
-                ]);
-              }
-            },
-          );
-        },
-      },
-      {
-        text: 'Gallery',
-        onPress: () => {
-          launchImageLibrary(
-            {
-              mediaType: 'photo',
-              quality: 0.7,
-              maxWidth: 1280,
-              maxHeight: 1280,
-              selectionLimit: 1,
-            },
-            response => {
-              if (response.errorCode) {
-                Alert.alert(
-                  'Gallery Error',
-                  response.errorMessage ||
-                    'Could not access gallery. Please check permissions.',
-                );
-                return;
-              }
-              if (response.didCancel) return;
-              const asset = response.assets?.[0];
-              if (asset?.uri) {
-                setPhotos(prev => [
-                  ...prev,
-                  {
-                    id: `photo-${Date.now()}`,
-                    uri: asset.uri!,
-                    timestamp: Date.now(),
-                  },
-                ]);
-              }
-            },
-          );
-        },
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
-
-  const handleRemovePhoto = (id: string) => {
-    setPhotos(photos.filter(p => p.id !== id));
-  };
-
-  const validate = (): boolean => {
-    if (!description.trim()) {
-      Alert.alert('Validation Error', 'Please enter incident description');
-      return false;
-    }
-
-    if (description.trim().length < 10) {
-      Alert.alert(
-        'Validation Error',
-        'Description must be at least 10 characters',
-      );
-      return false;
-    }
-
-    if ((severity === 'medium' || severity === 'high') && photos.length === 0) {
-      Alert.alert(
-        'Photo Required',
-        `At least one photo is required for ${severity} severity incidents`,
-      );
-      return false;
-    }
-
-    return true;
-  };
-
-  const handleSubmit = async () => {
-    if (!validate()) return;
+  const loadIncidents = async () => {
     if (!user?.section_id) {
-      Alert.alert('Error', 'No section assigned to your account.');
+      setIsLoading(false);
+      setIsRefreshing(false);
       return;
     }
+
     try {
-      const shifts = await shiftService.getTodayShifts(user.section_id);
-      if (shifts.length === 0) {
-        Alert.alert(
-          'No Active Shift',
-          'No shift found for today in your section.',
-        );
-        return;
-      }
-      await incidentService.createIncident({
-        shift_id: shifts[0].id,
+      const data = await incidentService.getIncidents({
         section_id: user.section_id,
-        incident_type: incidentType,
-        severity_level: severity as SeverityLevel,
-        title: description.trim().substring(0, 60),
-        description: description.trim(),
-        location_details: area,
-        reported_by: user.id,
       });
-      Alert.alert(
-        '✓ Incident Reported',
-        `Your ${severity} severity incident has been recorded and sent to your Foreman.`,
-        [
-          {
-            text: 'Done',
-            onPress: () => navigation.navigate('WorkerDashboard'),
-          },
-        ],
-      );
-    } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to submit incident');
+      setIncidents(data);
+    } catch {
+      setIncidents([]);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
     }
+  };
+
+  useEffect(() => {
+    loadIncidents();
+  }, [user?.section_id]);
+
+  const filteredIncidents = useMemo(() => {
+    if (filter === 'all') return incidents;
+    return incidents.filter(i => i.severity_level === filter);
+  }, [incidents, filter]);
+
+  const severityColor = (level: string) => {
+    if (level === 'high') return '#ef4444';
+    if (level === 'medium') return '#f59e0b';
+    return '#10b981';
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backButton}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
         >
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Report Incident</Text>
-          <Text style={styles.headerSubtitle}>Fast & Secure</Text>
+          <Text style={styles.headerTitle}>Incident Reports</Text>
+          <Text style={styles.headerSubtitle}>Viewer Mode</Text>
         </View>
         <View style={styles.headerPlaceholder} />
       </View>
 
-      <ScrollView style={styles.scrollView}>
-        {/* Description */}
-        <View style={styles.section}>
-          <View style={styles.labelRow}>
-            <Text style={styles.label}>📝 Description</Text>
-            <Text style={styles.required}>*</Text>
-          </View>
-          <TextInput
-            style={styles.textArea}
-            placeholder="Describe what happened in detail..."
-            placeholderTextColor="#94a3b8"
-            value={description}
-            onChangeText={setDescription}
-            multiline
-            numberOfLines={5}
-          />
-          <Text style={styles.helperText}>
-            {description.length}/500 • Minimum 10 characters
-          </Text>
-        </View>
+      <View style={styles.noticeBar}>
+        <Text style={styles.noticeText}>
+          ℹ️ Reporting is handled by foreman/supervisor. Workers can view
+          section safety incidents here.
+        </Text>
+      </View>
 
-        {/* Severity */}
-        <View style={styles.section}>
-          <View style={styles.labelRow}>
-            <Text style={styles.label}>⚠️ Severity</Text>
-            <Text style={styles.required}>*</Text>
-          </View>
-          <View style={styles.severityGrid}>
-            {SEVERITIES.map(sev => (
-              <TouchableOpacity
-                key={sev.value}
-                style={[
-                  styles.severityCard,
-                  severity === sev.value && {
-                    backgroundColor: sev.color,
-                    borderColor: sev.color,
-                  },
-                ]}
-                onPress={() => setSeverity(sev.value)}
-              >
-                <Text style={styles.severityIcon}>{sev.icon}</Text>
-                <Text
-                  style={[
-                    styles.severityLabel,
-                    severity === sev.value && styles.severityLabelActive,
-                  ]}
-                >
-                  {sev.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          {(severity === 'medium' || severity === 'high') && (
-            <View style={styles.photoRequiredBanner}>
-              <Text style={styles.photoRequiredIcon}>📷</Text>
-              <Text style={styles.photoRequiredText}>
-                Photo required for {severity} severity
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Location / Area */}
-        <View style={styles.section}>
-          <View style={styles.labelRow}>
-            <Text style={styles.label}>📍 Location</Text>
-            <Text style={styles.required}>*</Text>
-          </View>
-          <View style={styles.areaGrid}>
-            {areas.map(areaOption => (
-              <TouchableOpacity
-                key={areaOption}
-                style={[
-                  styles.areaButton,
-                  area === areaOption && styles.areaButtonActive,
-                ]}
-                onPress={() => setArea(areaOption)}
-              >
-                <Text
-                  style={[
-                    styles.areaButtonText,
-                    area === areaOption && styles.areaButtonTextActive,
-                  ]}
-                >
-                  {areaOption}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Photos */}
-        <View style={styles.section}>
-          <View style={styles.labelRow}>
-            <Text style={styles.label}>📷 Photos</Text>
-            {(severity === 'medium' || severity === 'high') && (
-              <Text style={styles.required}>*</Text>
-            )}
-          </View>
-
+      <View style={styles.filterRow}>
+        {(['all', 'high', 'medium', 'low'] as Filter[]).map(f => (
           <TouchableOpacity
-            style={styles.addPhotoButton}
-            onPress={handleAddPhoto}
+            key={f}
+            style={[styles.filterChip, filter === f && styles.filterChipActive]}
+            onPress={() => setFilter(f)}
+            accessibilityRole="button"
+            accessibilityLabel={`Filter incidents by ${f}`}
+            accessibilityState={{ selected: filter === f }}
           >
-            <Text style={styles.addPhotoIcon}>📸</Text>
-            <Text style={styles.addPhotoText}>
-              Add Photo (Camera / Gallery)
+            <Text
+              style={[
+                styles.filterChipText,
+                filter === f && styles.filterChipTextActive,
+              ]}
+            >
+              {f.toUpperCase()}
             </Text>
           </TouchableOpacity>
+        ))}
+      </View>
 
-          {photos.length > 0 && (
-            <View style={styles.photoList}>
-              {photos.map((photo, index) => (
-                <View key={photo.id} style={styles.photoItem}>
-                  <Image
-                    source={{ uri: photo.uri }}
-                    style={styles.photoThumb}
-                    resizeMode="cover"
-                  />
-                  <TouchableOpacity
-                    style={styles.removePhotoButton}
-                    onPress={() => handleRemovePhoto(photo.id)}
-                  >
-                    <Text style={styles.removePhotoText}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
+      {isLoading ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color="#1e3a5f" />
         </View>
-
-        {/* Submit Button */}
-        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-          <Text style={styles.submitButtonText}>✓ Submit Incident Report</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.cancelButton}
-          onPress={() => navigation.goBack()}
+      ) : (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => {
+                setIsRefreshing(true);
+                loadIncidents();
+              }}
+              colors={['#1e3a5f']}
+            />
+          }
         >
-          <Text style={styles.cancelButtonText}>Cancel</Text>
-        </TouchableOpacity>
-      </ScrollView>
+          {filteredIncidents.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>📭</Text>
+              <Text style={styles.emptyTitle}>No Incidents Found</Text>
+              <Text style={styles.emptyText}>
+                No incidents available for your section with selected filter.
+              </Text>
+            </View>
+          ) : (
+            filteredIncidents.map(item => (
+              <View key={item.id} style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.cardTitle}>
+                    {item.title || 'Incident'}
+                  </Text>
+                  <View
+                    style={[
+                      styles.badge,
+                      { backgroundColor: severityColor(item.severity_level) },
+                    ]}
+                  >
+                    <Text style={styles.badgeText}>
+                      {item.severity_level.toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.metaText}>
+                  Type: {item.incident_type} •{' '}
+                  {new Date(item.created_at).toLocaleString()}
+                </Text>
+
+                <Text style={styles.description}>{item.description}</Text>
+
+                <Text style={styles.statusText}>
+                  Status: {item.is_resolved ? 'Resolved' : 'Open'}
+                </Text>
+              </View>
+            ))
+          )}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f0f4f8',
-  },
+  container: { flex: 1, backgroundColor: '#f0f4f8' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -389,244 +187,84 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e3a5f',
     elevation: 4,
   },
-  backButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-  },
-  backButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-    letterSpacing: 0.5,
-  },
+  backButton: { paddingVertical: 6, paddingHorizontal: 8 },
+  backButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  headerCenter: { flex: 1, alignItems: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
   headerSubtitle: {
     fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.75)',
+    color: 'rgba(255,255,255,0.75)',
     marginTop: 2,
   },
-  headerPlaceholder: {
-    width: 60,
-  },
-  scrollView: {
-    flex: 1,
-    padding: 16,
-  },
-  section: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 16,
-    elevation: 2,
-  },
-  labelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  required: {
-    color: '#ef4444',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 4,
-  },
-  textArea: {
-    backgroundColor: '#f8fafc',
-    borderWidth: 1.5,
-    borderColor: '#cbd5e1',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: '#1e293b',
-    minHeight: 120,
-    textAlignVertical: 'top',
-  },
-  helperText: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 6,
-    fontWeight: '500',
-  },
-  severityGrid: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  severityCard: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#cbd5e1',
-    backgroundColor: '#f8fafc',
-  },
-  severityIcon: {
-    fontSize: 28,
-    marginBottom: 6,
-  },
-  severityLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  severityLabelActive: {
-    color: '#fff',
-  },
-  photoRequiredBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fef3c7',
+  headerPlaceholder: { width: 60 },
+  noticeBar: {
+    backgroundColor: '#e0f2fe',
+    borderBottomWidth: 1,
+    borderBottomColor: '#bae6fd',
     paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  noticeText: { fontSize: 12, color: '#0369a1', fontWeight: '600' },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
     paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+  },
+  filterChip: {
+    flex: 1,
+    backgroundColor: '#e2e8f0',
     borderRadius: 8,
-    marginTop: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
   },
-  photoRequiredIcon: {
-    fontSize: 18,
-    marginRight: 8,
-  },
-  photoRequiredText: {
+  filterChipActive: { backgroundColor: '#1e3a5f' },
+  filterChipText: { fontSize: 11, fontWeight: '700', color: '#334155' },
+  filterChipTextActive: { color: '#fff' },
+  loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  scrollView: { flex: 1 },
+  scrollContent: { padding: 12, paddingBottom: 24 },
+  emptyState: { alignItems: 'center', paddingVertical: 60 },
+  emptyIcon: { fontSize: 52, marginBottom: 12 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#1e293b' },
+  emptyText: {
+    marginTop: 8,
     fontSize: 13,
-    fontWeight: '600',
-    color: '#92400e',
-  },
-  areaGrid: {
-    gap: 10,
-  },
-  areaButton: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: '#cbd5e1',
-    backgroundColor: '#f8fafc',
-  },
-  areaButtonActive: {
-    backgroundColor: '#f59e0b',
-    borderColor: '#f59e0b',
-  },
-  areaButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
     color: '#64748b',
     textAlign: 'center',
+    paddingHorizontal: 20,
   },
-  areaButtonTextActive: {
-    color: '#fff',
-  },
-  addPhotoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f59e0b',
-    paddingVertical: 14,
-    borderRadius: 10,
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
     elevation: 2,
-    gap: 8,
   },
-  addPhotoIcon: {
-    fontSize: 20,
-  },
-  addPhotoText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  photoList: {
-    marginTop: 12,
-    gap: 10,
-  },
-  photoItem: {
+  cardHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#f8fafc',
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-  },
-  photoThumb: {
-    flex: 1,
-    height: 90,
-    borderRadius: 8,
-    backgroundColor: '#e2e8f0',
-  },
-  removePhotoButton: {
-    marginLeft: 12,
-    padding: 8,
-  },
-  removePhotoText: {
-    fontSize: 20,
-    color: '#ef4444',
-    fontWeight: 'bold',
-  },
-  shiftList: {
-    gap: 10,
-  },
-  shiftItem: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: '#cbd5e1',
-    backgroundColor: '#f8fafc',
-  },
-  shiftItemActive: {
-    backgroundColor: '#1e3a5f',
-    borderColor: '#1e3a5f',
-  },
-  shiftItemText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  shiftItemTextActive: {
-    color: '#fff',
-  },
-  submitButton: {
-    backgroundColor: '#ef4444',
-    paddingVertical: 16,
-    borderRadius: 12,
     alignItems: 'center',
-    elevation: 3,
-    marginBottom: 12,
+    marginBottom: 8,
   },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  cancelButton: {
-    backgroundColor: '#f1f5f9',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#cbd5e1',
-    marginBottom: 24,
-  },
-  cancelButtonText: {
-    color: '#64748b',
+  cardTitle: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: '#1e293b',
+    flex: 1,
+    marginRight: 8,
   },
+  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  badgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  metaText: { color: '#64748b', fontSize: 12, marginBottom: 8 },
+  description: {
+    color: '#334155',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 10,
+  },
+  statusText: { color: '#0f766e', fontSize: 12, fontWeight: '700' },
 });
 
 export default ReportIncidentScreen;

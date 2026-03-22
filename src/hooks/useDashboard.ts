@@ -190,7 +190,35 @@ export function useForemanDashboard(): ForemanDashboardData {
 
     try {
       // Get today's shifts for the section
-      const shifts = await shiftService.getTodayShifts(user.section_id);
+      let shifts = await shiftService.getTodayShifts(user.section_id);
+
+      if (shifts.length === 0) {
+        // Bootstrap today's shift for section workflows (attendance/reporting)
+        const sectionOvermen = await userService.getUsers({
+          role: 'overman',
+          section_id: user.section_id,
+          is_active: true,
+        });
+
+        const nowHour = new Date().getHours();
+        const inferredShiftType =
+          nowHour >= 6 && nowHour < 14
+            ? 'morning'
+            : nowHour >= 14 && nowHour < 22
+            ? 'evening'
+            : 'night';
+
+        await shiftService.createShift({
+          shift_date: new Date().toISOString().split('T')[0],
+          shift_type: inferredShiftType,
+          section_id: user.section_id,
+          overman_id: sectionOvermen[0]?.id ?? user.id,
+          handover_notes: 'Auto-initialized for attendance workflow',
+        });
+
+        shifts = await shiftService.getTodayShifts(user.section_id);
+      }
+
       const currentShift = shifts[0] || null;
       setCurrentShift(currentShift);
 
@@ -239,6 +267,20 @@ export function useForemanDashboard(): ForemanDashboardData {
           pendingIncidents: pending,
           highSeverityIncidents: highSeverity,
           faultyEquipment: faulty,
+          shiftsToday: shifts.length,
+        });
+      } else {
+        // No active shift yet: keep worker roster visible and counts consistent
+        setWorkerLogs([]);
+        setIncidents([]);
+        setEquipment([]);
+        setStats({
+          workersPresent: 0,
+          workersAbsent: 0,
+          totalWorkers: sectionWorkers.length,
+          pendingIncidents: 0,
+          highSeverityIncidents: 0,
+          faultyEquipment: 0,
           shiftsToday: shifts.length,
         });
       }
@@ -393,10 +435,7 @@ interface ManagerDashboardData {
  */
 export function useManagerDashboard(): ManagerDashboardData {
   const { user, role } = useAuth();
-
-  if (role !== 'manager') {
-    throw new Error('useManagerDashboard can only be used by manager role');
-  }
+  const isManager = role === 'manager';
   const [allShifts, setAllShifts] = useState<ShiftWithRelations[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<
     ShiftWithRelations[]
@@ -415,6 +454,24 @@ export function useManagerDashboard(): ManagerDashboardData {
   const [error, setError] = useState<Error | null>(null);
 
   const refreshData = useCallback(async () => {
+    if (!isManager) {
+      setAllShifts([]);
+      setPendingApprovals([]);
+      setIncidentSummary([]);
+      setOverallStats({
+        workersPresent: 0,
+        workersAbsent: 0,
+        totalWorkers: 0,
+        pendingIncidents: 0,
+        highSeverityIncidents: 0,
+        faultyEquipment: 0,
+        shiftsToday: 0,
+      });
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -466,21 +523,23 @@ export function useManagerDashboard(): ManagerDashboardData {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isManager]);
 
   useEffect(() => {
     refreshData();
   }, [refreshData]);
 
   const approveShift = async (shiftId: string, remarks?: string) => {
+    if (!user?.id) return;
     const { approvalService } = await import('../services/approvalService');
-    await approvalService.approveShift(shiftId, user!.id, remarks);
+    await approvalService.approveShift(shiftId, user.id, remarks);
     await refreshData();
   };
 
   const rejectShift = async (shiftId: string, remarks: string) => {
+    if (!user?.id) return;
     const { approvalService } = await import('../services/approvalService');
-    await approvalService.rejectShift(shiftId, user!.id, remarks);
+    await approvalService.rejectShift(shiftId, user.id, remarks);
     await refreshData();
   };
 

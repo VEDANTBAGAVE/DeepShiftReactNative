@@ -41,7 +41,8 @@ const ShiftHistoryScreen: React.FC = () => {
   }, [user]);
 
   const sortedShifts = [...shifts].sort(
-    (a, b) => new Date(b.shift_date).getTime() - new Date(a.shift_date).getTime(),
+    (a, b) =>
+      new Date(b.shift_date).getTime() - new Date(a.shift_date).getTime(),
   );
 
   return (
@@ -50,24 +51,34 @@ const ShiftHistoryScreen: React.FC = () => {
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backButton}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
         >
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Shift History</Text>
-          <Text style={styles.headerSubtitle}>{sortedShifts.length} shifts</Text>
+          <Text style={styles.headerTitle}>Shift Participation</Text>
+          <Text style={styles.headerSubtitle}>
+            {sortedShifts.length} shifts
+          </Text>
         </View>
         <View style={{ width: 60 }} />
       </View>
 
       <ScrollView style={styles.scrollView}>
         {isLoading ? (
-          <ActivityIndicator size="large" color="#1e3a5f" style={{ marginTop: 60 }} />
+          <ActivityIndicator
+            size="large"
+            color="#1e3a5f"
+            style={{ marginTop: 60 }}
+          />
         ) : sortedShifts.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>📋</Text>
             <Text style={styles.emptyTitle}>No Shifts Yet</Text>
-            <Text style={styles.emptyText}>No shifts found for your section</Text>
+            <Text style={styles.emptyText}>
+              No shift records found for your section
+            </Text>
           </View>
         ) : (
           sortedShifts.map(shift => (
@@ -77,6 +88,8 @@ const ShiftHistoryScreen: React.FC = () => {
               onPress={() =>
                 navigation.navigate('ShiftDetailScreen', { shiftId: shift.id })
               }
+              accessibilityRole="button"
+              accessibilityLabel={`Open shift details for ${shift.shift_date} ${shift.shift_type} shift`}
             >
               <View style={styles.shiftHeader}>
                 <View>
@@ -88,7 +101,9 @@ const ShiftHistoryScreen: React.FC = () => {
                 <View
                   style={[
                     styles.statusBadge,
-                    { backgroundColor: STATUS_COLORS[shift.status] ?? '#94a3b8' },
+                    {
+                      backgroundColor: STATUS_COLORS[shift.status] ?? '#94a3b8',
+                    },
                   ]}
                 >
                   <Text style={styles.statusBadgeText}>
@@ -107,8 +122,14 @@ const ShiftHistoryScreen: React.FC = () => {
 
               <View style={styles.shiftStats}>
                 <Text style={styles.shiftStat}>
-                  📅 {shift.submitted_at
-                    ? `Submitted ${new Date(shift.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  📅{' '}
+                  {shift.submitted_at
+                    ? `Submitted ${new Date(
+                        shift.submitted_at,
+                      ).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}`
                     : 'Not yet submitted'}
                 </Text>
               </View>

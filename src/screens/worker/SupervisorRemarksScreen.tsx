@@ -103,11 +103,13 @@ const SupervisorRemarksScreen: React.FC = () => {
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backButton}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
         >
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Foreman Remarks</Text>
+          <Text style={styles.headerTitle}>Supervisor Remarks</Text>
           <Text style={styles.headerSubtitle}>
             {unreadCount} unread · {remarks.length} total
           </Text>
@@ -120,6 +122,8 @@ const SupervisorRemarksScreen: React.FC = () => {
           <TouchableOpacity
             style={styles.markAllReadButton}
             onPress={handleMarkAllRead}
+            accessibilityRole="button"
+            accessibilityLabel="Mark all remarks as read"
           >
             <Text style={styles.markAllReadText}>✓ Mark All Read</Text>
           </TouchableOpacity>
@@ -151,7 +155,7 @@ const SupervisorRemarksScreen: React.FC = () => {
               <Text style={styles.emptyIcon}>💬</Text>
               <Text style={styles.emptyTitle}>No Remarks Yet</Text>
               <Text style={styles.emptyText}>
-                Your foreman's remarks and messages will appear here
+                Foreman and supervisor notes will appear here
               </Text>
             </View>
           }

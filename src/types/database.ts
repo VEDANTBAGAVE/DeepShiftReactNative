@@ -186,6 +186,19 @@ export type NotificationTypeDB =
   | 'safety'
   | 'task';
 
+export type FeedbackTypeDB =
+  | 'unreported_incident'
+  | 'equipment_hazard'
+  | 'attendance_dispute'
+  | 'unsafe_condition'
+  | 'other';
+
+export type FeedbackStatusDB =
+  | 'pending_supervisor_review'
+  | 'pending_manager_verification'
+  | 'confirmed'
+  | 'rejected';
+
 export interface Notification {
   id: string;
   user_id: string;
@@ -209,6 +222,24 @@ export interface ShiftHandover {
   handover_time: string;
   acknowledgment_time: string | null;
   created_at: string;
+}
+
+export interface WorkerFeedbackReport {
+  id: string;
+  worker_id: string;
+  section_id: string;
+  shift_id: string | null;
+  feedback_type: FeedbackTypeDB;
+  description: string;
+  status: FeedbackStatusDB;
+  supervisor_reviewer_id: string | null;
+  supervisor_reviewed_at: string | null;
+  supervisor_notes: string | null;
+  manager_verifier_id: string | null;
+  manager_verified_at: string | null;
+  manager_notes: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // Database schema type for Supabase client
@@ -292,6 +323,18 @@ export interface Database {
           created_at?: string;
         };
         Update: Partial<Omit<ShiftHandover, 'id'>>;
+      };
+      worker_feedback_reports: {
+        Row: WorkerFeedbackReport;
+        Insert: Omit<
+          WorkerFeedbackReport,
+          'id' | 'created_at' | 'updated_at'
+        > & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<WorkerFeedbackReport, 'id'>>;
       };
     };
     Views: {

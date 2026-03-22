@@ -17,6 +17,7 @@ import { useManagerDashboard } from '../hooks/useDashboard';
 import safetyIntelligenceService, {
   SafetyAlert,
 } from '../services/safetyIntelligenceService';
+import workerFeedbackService from '../services/workerFeedbackService';
 
 const { width } = Dimensions.get('window');
 
@@ -147,6 +148,7 @@ const ManagerDashboard: React.FC = () => {
     isLoading,
   } = useManagerDashboard();
   const [ruleAlerts, setRuleAlerts] = useState<SafetyAlert[]>([]);
+  const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -166,6 +168,20 @@ const ManagerDashboard: React.FC = () => {
       mounted = false;
     };
   }, [allShifts, overallStats.pendingIncidents, pendingApprovalShifts.length]);
+
+  useEffect(() => {
+    const loadPendingFeedback = async () => {
+      try {
+        const pending = await workerFeedbackService.getAllFeedback(
+          'pending_manager_verification',
+        );
+        setPendingFeedbackCount(pending.length);
+      } catch {
+        setPendingFeedbackCount(0);
+      }
+    };
+    loadPendingFeedback();
+  }, [ruleAlerts.length, pendingApprovalShifts.length]);
 
   // Compute derived metrics from allShifts with relations
   const activeOvermen = new Set(
@@ -200,8 +216,17 @@ const ManagerDashboard: React.FC = () => {
       : 100;
 
   // Real data from Supabase merged with display defaults
+  const archivedCount = allShifts.filter(s => s.status === 'archived').length;
+  const approvedCount = allShifts.filter(s => s.status === 'approved').length;
+  const activeShiftsCount = allShifts.filter(
+    s => s.status === 'draft' || s.status === 'submitted' || s.status === 'approved',
+  ).length;
+  const latestShift = allShifts[0];
+
   const shiftData = {
-    currentShift: 'Current Shift',
+    currentShift: latestShift
+      ? `${latestShift.shift_type.charAt(0).toUpperCase()}${latestShift.shift_type.slice(1)} Shift`
+      : 'No Active Shift',
     shiftTime: new Date().toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit',
@@ -226,7 +251,7 @@ const ManagerDashboard: React.FC = () => {
 
   const handleLogout = async () => {
     await logout();
-    navigation.navigate('HomeScreen');
+    navigation.reset({ index: 0, routes: [{ name: 'LoginScreen' }] });
   };
 
   const handleProfile = () => {
@@ -260,6 +285,10 @@ const ManagerDashboard: React.FC = () => {
 
   const handleReportsArchive = () => {
     navigation.navigate('ReportsArchive');
+  };
+
+  const handleFeedbackReview = () => {
+    navigation.navigate('FeedbackReviewScreen');
   };
 
   return (
@@ -324,7 +353,7 @@ const ManagerDashboard: React.FC = () => {
           <StatisticCard
             icon="🔄"
             title="Total Active Shifts"
-            value="3"
+            value={activeShiftsCount.toString()}
             status="normal"
           />
           <StatisticCard
@@ -356,8 +385,6 @@ const ManagerDashboard: React.FC = () => {
             title="Production Rate"
             value={`${shiftData.productionRate}%`}
             subtitle="of daily target"
-            trend="up"
-            trendValue="2% vs yesterday"
             color="#10b981"
           />
 
@@ -366,8 +393,6 @@ const ManagerDashboard: React.FC = () => {
             title="Safety Score"
             value={`${shiftData.safetyScore}%`}
             subtitle="compliance rate"
-            trend="down"
-            trendValue="1% vs yesterday"
             color="#f59e0b"
           />
 
@@ -388,8 +413,6 @@ const ManagerDashboard: React.FC = () => {
             title="Pending Approvals"
             value={shiftData.pendingApprovals.toString()}
             subtitle="shift logs awaiting review"
-            trend="neutral"
-            trendValue="Same as yesterday"
             color="#3b82f6"
           />
         </View>
@@ -430,6 +453,18 @@ const ManagerDashboard: React.FC = () => {
               subtitle="Team analytics"
               onPress={handleStaffManagement}
             />
+            <ActionCard
+              icon="🛡️"
+              title="Worker Feedback"
+              subtitle="Manager verification"
+              badge={
+                pendingFeedbackCount > 0
+                  ? pendingFeedbackCount.toString()
+                  : undefined
+              }
+              badgeColor="#2563eb"
+              onPress={handleFeedbackReview}
+            />
           </View>
         </View>
 
@@ -469,18 +504,18 @@ const ManagerDashboard: React.FC = () => {
           </View>
           <View style={styles.archiveStats}>
             <View style={styles.archiveStat}>
-              <Text style={styles.archiveStatValue}>6</Text>
+              <Text style={styles.archiveStatValue}>{allShifts.length}</Text>
               <Text style={styles.archiveStatLabel}>Total Records</Text>
             </View>
             <View style={styles.archiveStat}>
               <Text style={[styles.archiveStatValue, { color: '#10b981' }]}>
-                4
+                {approvedCount}
               </Text>
               <Text style={styles.archiveStatLabel}>Approved</Text>
             </View>
             <View style={styles.archiveStat}>
               <Text style={[styles.archiveStatValue, { color: '#64748b' }]}>
-                2
+                {archivedCount}
               </Text>
               <Text style={styles.archiveStatLabel}>Archived</Text>
             </View>

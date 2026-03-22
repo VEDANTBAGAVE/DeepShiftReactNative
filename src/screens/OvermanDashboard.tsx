@@ -13,6 +13,9 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { useAuth } from '../context/AuthContext';
 import { useOvermanDashboard } from '../hooks/useDashboard';
+import { shiftService } from '../services/shiftService';
+import { userService } from '../services/userService';
+import { ShiftWithRelations } from '../types/database';
 
 type OvermanDashboardNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -24,6 +27,19 @@ interface FeatureCardProps {
   badge?: string;
   badgeColor?: string;
   hasWarning?: boolean;
+}
+
+type StatusTone = 'pending' | 'review' | 'ok';
+
+interface SectionStatusRow {
+  sectionId: string;
+  sectionName: string;
+  foremanName: string;
+  presentWorkers: number;
+  totalWorkers: number;
+  incidentsCount: number;
+  statusText: string;
+  tone: StatusTone;
 }
 
 const FeatureCard: React.FC<FeatureCardProps> = ({
@@ -56,10 +72,148 @@ const OvermanDashboard: React.FC = () => {
   const navigation = useNavigation<OvermanDashboardNavigationProp>();
   const { user, logout } = useAuth();
   const { shifts, pendingShifts, isLoading, refreshData } = useOvermanDashboard();
+  const [sectionRows, setSectionRows] = useState<SectionStatusRow[]>([]);
+  const [summary, setSummary] = useState({
+    shiftLabel: 'No Active Shift',
+    foremenCount: 0,
+    totalWorkers: 0,
+    presentWorkers: 0,
+    incidentsCount: 0,
+    submittedLogs: 0,
+    pendingReports: 0,
+    safetyRate: 0,
+    productionRate: 0,
+    productionTarget: 0,
+  });
+
+  useEffect(() => {
+    const loadLiveData = async () => {
+      if (!user?.id) return;
+
+      try {
+        await refreshData();
+
+        const [allShiftsWithRelations, foremen] = await Promise.all([
+          shiftService.getShiftsWithRelations(),
+          userService.getUsers({ role: 'foreman', is_active: true }),
+        ]);
+
+        const overmanShifts = allShiftsWithRelations.filter(
+          s => s.overman_id === user.id,
+        );
+
+        const today = new Date().toISOString().split('T')[0];
+        const todayShifts = overmanShifts.filter(s => s.shift_date === today);
+        const referenceDateShifts =
+          todayShifts.length > 0
+            ? todayShifts
+            : overmanShifts.filter(
+                s => s.shift_date === overmanShifts[0]?.shift_date,
+              );
+
+        const latestBySection = new Map<string, ShiftWithRelations>();
+        for (const shift of referenceDateShifts) {
+          if (!latestBySection.has(shift.section_id)) {
+            latestBySection.set(shift.section_id, shift);
+          }
+        }
+
+        const rows: SectionStatusRow[] = Array.from(
+          latestBySection.values(),
+        ).map(shift => {
+          const logs = shift.worker_logs ?? [];
+          const presentWorkers = logs.filter(
+            l => l.attendance_status === 'present',
+          ).length;
+          const incidentsCount = (shift.incidents ?? []).length;
+
+          const statusText =
+            shift.status === 'approved'
+              ? 'Approved'
+              : shift.status === 'submitted'
+              ? 'Submitted'
+              : 'Pending';
+
+          const tone: StatusTone =
+            shift.status === 'approved'
+              ? 'ok'
+              : shift.status === 'submitted'
+              ? 'review'
+              : 'pending';
+
+          const foreman = foremen.find(f => f.section_id === shift.section_id);
+
+          return {
+            sectionId: shift.section_id,
+            sectionName: shift.section?.section_name ?? 'Unknown Section',
+            foremanName: foreman?.name ?? 'Unassigned',
+            presentWorkers,
+            totalWorkers: logs.length,
+            incidentsCount,
+            statusText,
+            tone,
+          };
+        });
+
+        const totalWorkers = rows.reduce((acc, row) => acc + row.totalWorkers, 0);
+        const presentWorkers = rows.reduce(
+          (acc, row) => acc + row.presentWorkers,
+          0,
+        );
+        const incidentsCount = rows.reduce(
+          (acc, row) => acc + row.incidentsCount,
+          0,
+        );
+
+        const safetyPassed = referenceDateShifts
+          .flatMap(s => s.worker_logs ?? [])
+          .filter(l => l.safety_check_passed).length;
+
+        const firstShift = referenceDateShifts[0];
+        const shiftLabel = firstShift
+          ? `${firstShift.shift_type.charAt(0).toUpperCase()}${firstShift.shift_type.slice(1)} Shift`
+          : 'No Active Shift';
+
+        setSectionRows(rows);
+        setSummary({
+          shiftLabel,
+          foremenCount: new Set(rows.map(r => r.foremanName)).size,
+          totalWorkers,
+          presentWorkers,
+          incidentsCount,
+          submittedLogs: overmanShifts.filter(s => s.status === 'submitted')
+            .length,
+          pendingReports: rows.filter(r => r.statusText !== 'Approved').length,
+          safetyRate:
+            totalWorkers > 0 ? Math.round((safetyPassed / totalWorkers) * 100) : 0,
+          productionRate:
+            totalWorkers > 0
+              ? Math.round((presentWorkers / totalWorkers) * 100)
+              : 0,
+          productionTarget: totalWorkers,
+        });
+      } catch {
+        setSectionRows([]);
+      }
+    };
+
+    loadLiveData();
+  }, [user?.id, shifts.length, pendingShifts.length, refreshData]);
+
+  const getStatusStyle = (tone: StatusTone) => {
+    switch (tone) {
+      case 'ok':
+        return styles.statusApproved;
+      case 'review':
+        return styles.statusReview;
+      default:
+        return styles.statusPending;
+    }
+  };
 
   const handleLogout = async () => {
     await logout();
-    navigation.navigate('HomeScreen');
+    navigation.reset({ index: 0, routes: [{ name: 'LoginScreen' }] });
   };
 
   const handleProfileSettings = () => {
@@ -119,15 +273,16 @@ const OvermanDashboard: React.FC = () => {
       {/* Shift Info Banner */}
       <View style={styles.shiftBanner}>
         <Text style={styles.shiftBannerText}>
-          🕐 Morning Shift | 📍 Panel 5 (All Sections) | 👥 3 Foremen | 24
-          Workers
+          🕐 {summary.shiftLabel} | 📍 All Sections | 👥 {summary.foremenCount}{' '}
+          Foremen | {summary.totalWorkers} Workers
         </Text>
       </View>
 
       {/* Pending Section Reports Alert */}
       <View style={styles.alertBanner}>
         <Text style={styles.alertText}>
-          ⚠️ 3 Section Reports Pending Review → Merge & Submit Shift Log
+          ⚠️ {summary.pendingReports} Section Reports Pending Review → Merge &
+          Submit Shift Log
         </Text>
       </View>
 
@@ -135,41 +290,26 @@ const OvermanDashboard: React.FC = () => {
         {/* Section Reports Overview */}
         <View style={styles.overviewCard}>
           <Text style={styles.overviewTitle}>Section Reports Status</Text>
-          <View style={styles.sectionReportItem}>
-            <View style={styles.sectionInfo}>
-              <Text style={styles.sectionName}>
-                Section A (Foreman: Rajesh)
-              </Text>
-              <Text style={styles.sectionDetails}>
-                7/8 present • 1 maintenance issue
-              </Text>
-            </View>
-            <View style={[styles.statusBadge, styles.statusPending]}>
-              <Text style={styles.statusBadgeText}>Pending</Text>
-            </View>
-          </View>
-          <View style={styles.sectionReportItem}>
-            <View style={styles.sectionInfo}>
-              <Text style={styles.sectionName}>Section B (Foreman: Amit)</Text>
-              <Text style={styles.sectionDetails}>8/8 present • No issues</Text>
-            </View>
-            <View style={[styles.statusBadge, styles.statusPending]}>
-              <Text style={styles.statusBadgeText}>Pending</Text>
-            </View>
-          </View>
-          <View style={styles.sectionReportItem}>
-            <View style={styles.sectionInfo}>
-              <Text style={styles.sectionName}>
-                Section C (Foreman: Suresh)
-              </Text>
-              <Text style={styles.sectionDetails}>
-                8/8 present • 1 incident reported
-              </Text>
-            </View>
-            <View style={[styles.statusBadge, styles.statusPending]}>
-              <Text style={styles.statusBadgeText}>Pending</Text>
-            </View>
-          </View>
+          {sectionRows.length === 0 ? (
+            <Text style={styles.sectionDetails}>No section reports found</Text>
+          ) : (
+            sectionRows.map(row => (
+              <View key={row.sectionId} style={styles.sectionReportItem}>
+                <View style={styles.sectionInfo}>
+                  <Text style={styles.sectionName}>
+                    {row.sectionName} (Foreman: {row.foremanName})
+                  </Text>
+                  <Text style={styles.sectionDetails}>
+                    {row.presentWorkers}/{row.totalWorkers} present •{' '}
+                    {row.incidentsCount} incidents
+                  </Text>
+                </View>
+                <View style={[styles.statusBadge, getStatusStyle(row.tone)]}>
+                  <Text style={styles.statusBadgeText}>{row.statusText}</Text>
+                </View>
+              </View>
+            ))
+          )}
         </View>
 
         {/* Feature Grid */}
@@ -177,11 +317,15 @@ const OvermanDashboard: React.FC = () => {
           <FeatureCard
             icon="📑"
             title="Review Section Reports"
-            subtitle={`${pendingShifts.length} Pending Review`}
+            subtitle={`${summary.pendingReports} Pending Review`}
             onPress={handleReviewSectionReports}
-            badge={pendingShifts.length > 0 ? pendingShifts.length.toString() : undefined}
+            badge={
+              summary.pendingReports > 0
+                ? summary.pendingReports.toString()
+                : undefined
+            }
             badgeColor="#f59e0b"
-            hasWarning={pendingShifts.length > 0}
+            hasWarning={summary.pendingReports > 0}
           />
           <FeatureCard
             icon="🔄"
@@ -194,7 +338,11 @@ const OvermanDashboard: React.FC = () => {
             title="Incident Review"
             subtitle="All Sections"
             onPress={handleIncidentReview}
-            badge="2"
+            badge={
+              summary.incidentsCount > 0
+                ? summary.incidentsCount.toString()
+                : undefined
+            }
             badgeColor="#ef4444"
           />
           <FeatureCard
@@ -231,20 +379,20 @@ const OvermanDashboard: React.FC = () => {
           <Text style={styles.summaryTitle}>Today's Shift Summary</Text>
           <View style={styles.summaryGrid}>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryNumber}>24</Text>
+              <Text style={styles.summaryNumber}>{summary.totalWorkers}</Text>
               <Text style={styles.summaryLabel}>Total Workers</Text>
             </View>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryNumber}>23</Text>
+              <Text style={styles.summaryNumber}>{summary.presentWorkers}</Text>
               <Text style={styles.summaryLabel}>Present</Text>
             </View>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryNumber}>2</Text>
+              <Text style={styles.summaryNumber}>{summary.incidentsCount}</Text>
               <Text style={styles.summaryLabel}>Incidents</Text>
             </View>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryNumber}>145</Text>
-              <Text style={styles.summaryLabel}>Tons Mined</Text>
+              <Text style={styles.summaryNumber}>{summary.submittedLogs}</Text>
+              <Text style={styles.summaryLabel}>Submitted Logs</Text>
             </View>
           </View>
         </View>
@@ -254,17 +402,21 @@ const OvermanDashboard: React.FC = () => {
           <Text style={styles.notesTitle}>Key Notes</Text>
           <View style={styles.noteItem}>
             <Text style={styles.noteIcon}>🛡️</Text>
-            <Text style={styles.noteText}>All PPE compliance checked ✓</Text>
+            <Text style={styles.noteText}>
+              Safety pass rate: {summary.safetyRate}%
+            </Text>
           </View>
           <View style={styles.noteItem}>
             <Text style={styles.noteIcon}>📊</Text>
             <Text style={styles.noteText}>
-              Production: 97% of target (150 tons)
+              Attendance productivity: {summary.productionRate}% ({summary.presentWorkers}/{summary.productionTarget})
             </Text>
           </View>
           <View style={styles.noteItem}>
             <Text style={styles.noteIcon}>🔧</Text>
-            <Text style={styles.noteText}>Drill-02 maintenance scheduled</Text>
+            <Text style={styles.noteText}>
+              Open incident reports: {summary.incidentsCount}
+            </Text>
           </View>
         </View>
 
@@ -438,6 +590,12 @@ const styles = StyleSheet.create({
   },
   statusPending: {
     backgroundColor: '#fef3c7',
+  },
+  statusReview: {
+    backgroundColor: '#dbeafe',
+  },
+  statusApproved: {
+    backgroundColor: '#dcfce7',
   },
   statusBadgeText: {
     fontSize: 11,

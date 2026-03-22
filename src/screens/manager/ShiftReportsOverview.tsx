@@ -40,34 +40,51 @@ const ShiftReportsOverview: React.FC = () => {
 
   const reports = useMemo<ShiftReport[]>(
     () =>
-      allShifts.map(s => ({
-        id: s.id,
-        date: new Date(s.shift_date).toLocaleDateString('en-IN', {
-          day: 'numeric',
-          month: 'short',
-        }),
-        shiftType: s.shift_type.charAt(0).toUpperCase() + s.shift_type.slice(1),
-        overmanName: s.overman_id ?? '—',
-        totalWorkers: overallStats.totalWorkers,
-        presentWorkers: overallStats.workersPresent,
-        incidents: Array.isArray(incidentSummary) ? incidentSummary.length : 0,
-        status:
-          s.status === 'submitted'
-            ? 'Submitted'
-            : s.status === 'approved'
-            ? 'Approved'
-            : s.status === 'draft'
-            ? 'Under Review'
-            : s.status,
-        submittedAt: s.submitted_at
-          ? new Date(s.submitted_at).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            })
-          : '—',
-        safetyScore: 90,
-        productionRate: 95,
-      })),
+      allShifts.map(s => {
+        const logs = s.worker_logs ?? [];
+        const totalWorkers = logs.length;
+        const presentWorkers = logs.filter(
+          l => l.attendance_status === 'present',
+        ).length;
+        const safetyPassed = logs.filter(l => l.safety_check_passed).length;
+        const incidentsCount = (s.incidents ?? []).length;
+
+        return {
+          id: s.id,
+          date: new Date(s.shift_date).toLocaleDateString('en-IN', {
+            day: 'numeric',
+            month: 'short',
+          }),
+          shiftType:
+            s.shift_type.charAt(0).toUpperCase() + s.shift_type.slice(1),
+          overmanName: s.overman?.name ?? s.overman_id ?? '—',
+          totalWorkers,
+          presentWorkers,
+          incidents: incidentsCount,
+          status:
+            s.status === 'submitted'
+              ? 'Submitted'
+              : s.status === 'approved'
+              ? 'Approved'
+              : s.status === 'draft'
+              ? 'Under Review'
+              : s.status,
+          submittedAt: s.submitted_at
+            ? new Date(s.submitted_at).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : '—',
+          safetyScore:
+            totalWorkers > 0
+              ? Math.round((safetyPassed / totalWorkers) * 100)
+              : 0,
+          productionRate:
+            totalWorkers > 0
+              ? Math.round((presentWorkers / totalWorkers) * 100)
+              : 0,
+        };
+      }),
     [allShifts, incidentSummary, overallStats],
   );
   const filters = ['All', 'Submitted', 'Under Review', 'Approved', 'Flagged'];
@@ -230,13 +247,17 @@ const ShiftReportsOverview: React.FC = () => {
                   <Text style={styles.reportDate}>{report.date}</Text>
                 </View>
               </View>
-              <Text style={styles.reportId}>{report.id}</Text>
+              <Text style={styles.reportId} numberOfLines={1} ellipsizeMode="middle">
+                {report.id}
+              </Text>
             </View>
 
             {/* Overman Info */}
             <View style={styles.overmanRow}>
               <Text style={styles.overmanLabel}>Overman:</Text>
-              <Text style={styles.overmanName}>{report.overmanName}</Text>
+              <Text style={styles.overmanName} numberOfLines={1} ellipsizeMode="tail">
+                {report.overmanName}
+              </Text>
               <Text style={styles.submittedTime}>• {report.submittedAt}</Text>
             </View>
 
@@ -370,18 +391,21 @@ const styles = StyleSheet.create({
     color: '#1e293b',
   },
   filterContainer: {
+    maxHeight: 62,
     marginBottom: 8,
   },
   filterContent: {
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
   filterTab: {
+    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
+    height: 42,
     paddingHorizontal: 16,
-    paddingVertical: 10,
     borderRadius: 20,
     marginRight: 8,
     borderWidth: 1,
@@ -459,8 +483,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+    paddingRight: 82,
   },
   reportHeaderLeft: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -479,10 +505,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   reportId: {
+    maxWidth: 120,
     fontSize: 13,
     fontWeight: '600',
     color: '#94a3b8',
-    marginRight: 100,
   },
   overmanRow: {
     flexDirection: 'row',
@@ -498,6 +524,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   overmanName: {
+    flexShrink: 1,
     fontSize: 15,
     fontWeight: '600',
     color: '#1e293b',

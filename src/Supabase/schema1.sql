@@ -613,6 +613,21 @@ CREATE INDEX idx_task_assignments_worker_id ON task_assignments(worker_id);
 
 CREATE TYPE notification_type AS ENUM ('remark', 'report_status', 'incident', 'safety', 'task');
 
+CREATE TYPE feedback_type AS ENUM (
+    'unreported_incident',
+    'equipment_hazard',
+    'attendance_dispute',
+    'unsafe_condition',
+    'other'
+);
+
+CREATE TYPE feedback_status AS ENUM (
+    'pending_supervisor_review',
+    'pending_manager_verification',
+    'confirmed',
+    'rejected'
+);
+
 CREATE TABLE notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -643,6 +658,44 @@ CREATE POLICY "Allow all for development" ON notifications FOR ALL USING (true);
 
 GRANT INSERT, UPDATE, DELETE ON tasks, task_assignments, notifications TO authenticated;
 GRANT SELECT ON tasks, task_assignments, notifications TO anon, authenticated;
+
+-- ============================================
+-- TABLE: worker_feedback_reports
+-- ============================================
+
+CREATE TABLE worker_feedback_reports (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    worker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    section_id UUID NOT NULL REFERENCES sections(id) ON DELETE RESTRICT,
+    shift_id UUID REFERENCES shifts(id) ON DELETE SET NULL,
+    feedback_type feedback_type NOT NULL,
+    description TEXT NOT NULL,
+    status feedback_status NOT NULL DEFAULT 'pending_supervisor_review',
+    supervisor_reviewer_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    supervisor_reviewed_at TIMESTAMPTZ,
+    supervisor_notes TEXT,
+    manager_verifier_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    manager_verified_at TIMESTAMPTZ,
+    manager_notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE worker_feedback_reports IS 'Worker-raised post-shift safety feedback requiring supervisor and manager verification';
+
+-- Indexes
+CREATE INDEX idx_worker_feedback_worker_id ON worker_feedback_reports(worker_id);
+CREATE INDEX idx_worker_feedback_section_id ON worker_feedback_reports(section_id);
+CREATE INDEX idx_worker_feedback_shift_id ON worker_feedback_reports(shift_id);
+CREATE INDEX idx_worker_feedback_status ON worker_feedback_reports(status);
+CREATE INDEX idx_worker_feedback_created_at ON worker_feedback_reports(created_at DESC);
+
+-- Enable RLS
+ALTER TABLE worker_feedback_reports ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for development" ON worker_feedback_reports FOR ALL USING (true);
+
+GRANT INSERT, UPDATE, DELETE ON worker_feedback_reports TO authenticated;
+GRANT SELECT ON worker_feedback_reports TO anon, authenticated;
 
 -- ============================================
 -- TABLE: messages
@@ -853,6 +906,67 @@ ALTER TABLE remarks
     ADD COLUMN IF NOT EXISTS risk_score INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS risk_category VARCHAR(10) NOT NULL DEFAULT 'low',
     ADD COLUMN IF NOT EXISTS risk_flag BOOLEAN NOT NULL DEFAULT FALSE;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'feedback_type') THEN
+        CREATE TYPE feedback_type AS ENUM (
+            'unreported_incident',
+            'equipment_hazard',
+            'attendance_dispute',
+            'unsafe_condition',
+            'other'
+        );
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'feedback_status') THEN
+        CREATE TYPE feedback_status AS ENUM (
+            'pending_supervisor_review',
+            'pending_manager_verification',
+            'confirmed',
+            'rejected'
+        );
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS worker_feedback_reports (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    worker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    section_id UUID NOT NULL REFERENCES sections(id) ON DELETE RESTRICT,
+    shift_id UUID REFERENCES shifts(id) ON DELETE SET NULL,
+    feedback_type feedback_type NOT NULL,
+    description TEXT NOT NULL,
+    status feedback_status NOT NULL DEFAULT 'pending_supervisor_review',
+    supervisor_reviewer_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    supervisor_reviewed_at TIMESTAMPTZ,
+    supervisor_notes TEXT,
+    manager_verifier_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    manager_verified_at TIMESTAMPTZ,
+    manager_notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_worker_feedback_worker_id ON worker_feedback_reports(worker_id);
+CREATE INDEX IF NOT EXISTS idx_worker_feedback_section_id ON worker_feedback_reports(section_id);
+CREATE INDEX IF NOT EXISTS idx_worker_feedback_shift_id ON worker_feedback_reports(shift_id);
+CREATE INDEX IF NOT EXISTS idx_worker_feedback_status ON worker_feedback_reports(status);
+CREATE INDEX IF NOT EXISTS idx_worker_feedback_created_at ON worker_feedback_reports(created_at DESC);
+
+ALTER TABLE worker_feedback_reports ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname='public' AND tablename='worker_feedback_reports' AND policyname='Allow all for development'
+    ) THEN
+        CREATE POLICY "Allow all for development" ON worker_feedback_reports FOR ALL USING (true);
+    END IF;
+END $$;
+
+GRANT INSERT, UPDATE, DELETE ON worker_feedback_reports TO authenticated;
+GRANT SELECT ON worker_feedback_reports TO anon, authenticated;
 
 DO $$
 BEGIN

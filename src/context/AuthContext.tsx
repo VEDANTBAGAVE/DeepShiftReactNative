@@ -32,9 +32,39 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   const [role, setRole] = useState<UserRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const withTimeout = async <T,>(
+    promise: Promise<T>,
+    ms: number,
+    fallback: T,
+  ): Promise<T> => {
+    return new Promise(resolve => {
+      const timer = setTimeout(() => resolve(fallback), ms);
+      promise
+        .then(result => {
+          clearTimeout(timer);
+          resolve(result);
+        })
+        .catch(() => {
+          clearTimeout(timer);
+          resolve(fallback);
+        });
+    });
+  };
+
   // Check auth state on mount
   useEffect(() => {
     checkAuthState();
+
+    const loadingWatchdog = setTimeout(() => {
+      setIsLoading(prev => {
+        if (prev) {
+          setUser(null);
+          setRole(null);
+          return false;
+        }
+        return prev;
+      });
+    }, 12000);
 
     // Listen for auth state changes
     const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -48,6 +78,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     const subscription = data?.subscription;
 
     return () => {
+      clearTimeout(loadingWatchdog);
       if (subscription) {
         subscription.unsubscribe();
       }
@@ -57,14 +88,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   const checkAuthState = async () => {
     try {
       setIsLoading(true);
-      const authState = await authService.checkAuthState();
+      const authState = await withTimeout(
+        authService.checkAuthState(),
+        8000,
+        {
+          isAuthenticated: false,
+          user: null,
+          role: null,
+        },
+      );
 
       if (authState.isAuthenticated && authState.user) {
         setUser(authState.user);
         setRole(authState.role);
+      } else {
+        setUser(null);
+        setRole(null);
       }
     } catch (error) {
       console.error('Error checking auth state:', error);
+      setUser(null);
+      setRole(null);
     } finally {
       setIsLoading(false);
     }

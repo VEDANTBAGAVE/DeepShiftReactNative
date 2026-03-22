@@ -13,6 +13,7 @@ import { RootStackParamList } from '../navigation/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
 import { useForemanDashboard } from '../hooks/useDashboard';
+import { userService } from '../services/userService';
 
 type ForemanDashboardNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -59,7 +60,14 @@ const FeatureCard: React.FC<FeatureCardProps> = ({
 const ForemanDashboard: React.FC = () => {
   const navigation = useNavigation<ForemanDashboardNavigationProp>();
   const { user, logout } = useAuth();
-  const { stats: dashStats, isLoading, refreshData } = useForemanDashboard();
+  const {
+    currentShift,
+    equipment,
+    stats: dashStats,
+    isLoading,
+    refreshData,
+  } = useForemanDashboard();
+  const [sectionName, setSectionName] = useState('Unknown Section');
   const [stats, setStats] = useState({
     totalWorkers: 0,
     presentWorkers: 0,
@@ -115,6 +123,21 @@ const ForemanDashboard: React.FC = () => {
 
   // Sync Supabase stats to local stats format
   useEffect(() => {
+    const loadSectionName = async () => {
+      if (!user?.section_id) return;
+      try {
+        const section = await userService.getSectionById(user.section_id);
+        if (section?.section_name) {
+          setSectionName(section.section_name);
+        }
+      } catch {
+        // keep fallback
+      }
+    };
+    loadSectionName();
+  }, [user?.section_id]);
+
+  useEffect(() => {
     const mapped = {
       totalWorkers: dashStats.totalWorkers,
       presentWorkers: dashStats.workersPresent,
@@ -134,6 +157,26 @@ const ForemanDashboard: React.FC = () => {
     loadDeltas(mapped);
   }, [dashStats, loadDeltas]);
 
+  const shiftLabel = currentShift
+    ? `${currentShift.shift_type.charAt(0).toUpperCase()}${currentShift.shift_type.slice(1)} Shift`
+    : 'No Active Shift';
+
+  const faultyEquipment = equipment.filter(
+    e => e.condition_status === 'faulty' && !e.resolved_at,
+  );
+
+  const equipmentStatusText =
+    faultyEquipment.length > 0
+      ? `${faultyEquipment[0].equipment_name} needs maintenance${
+          faultyEquipment.length > 1
+            ? ` (+${faultyEquipment.length - 1} more)`
+            : ''
+        }`
+      : 'All checked equipment operational';
+
+  const hasAttendanceRecorded =
+    stats.presentWorkers + stats.absentWorkers > 0;
+
   // Refresh data when screen comes into focus
   useFocusEffect(
     useCallback(() => {
@@ -143,7 +186,7 @@ const ForemanDashboard: React.FC = () => {
 
   const handleLogout = async () => {
     await logout();
-    navigation.navigate('HomeScreen');
+    navigation.reset({ index: 0, routes: [{ name: 'LoginScreen' }] });
   };
 
   const handleProfileSettings = () => {
@@ -209,7 +252,8 @@ const ForemanDashboard: React.FC = () => {
       {/* Section Assignment Banner */}
       <View style={styles.sectionBanner}>
         <Text style={styles.sectionBannerText}>
-          🏗️ Section: Panel 5-A | 👷 Team Size: 8 workers | 🕐 Morning Shift
+          🏗️ Section: {sectionName} | 👷 Team Size: {stats.totalWorkers} workers
+          {'  '}| 🕐 {shiftLabel}
         </Text>
       </View>
 
@@ -276,11 +320,15 @@ const ForemanDashboard: React.FC = () => {
           <Text style={styles.overviewTitle}>Section Overview</Text>
           <View style={styles.overviewStats}>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{stats.presentWorkers}</Text>
+              <Text style={styles.statNumber}>
+                {hasAttendanceRecorded ? stats.presentWorkers : 'N/A'}
+              </Text>
               <Text style={styles.statLabel}>Present</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{stats.absentWorkers}</Text>
+              <Text style={styles.statNumber}>
+                {hasAttendanceRecorded ? stats.absentWorkers : 'N/A'}
+              </Text>
               <Text style={styles.statLabel}>Absent</Text>
             </View>
             <View style={styles.statItem}>
@@ -362,15 +410,19 @@ const ForemanDashboard: React.FC = () => {
           <Text style={styles.progressTitle}>Today's Progress</Text>
           <View style={styles.progressItem}>
             <Text style={styles.progressLabel}>✅ Attendance Recorded</Text>
-            <Text style={styles.progressValue}>7/8 workers</Text>
+            <Text style={styles.progressValue}>
+              {stats.presentWorkers}/{stats.totalWorkers} workers
+            </Text>
           </View>
           <View style={styles.progressItem}>
             <Text style={styles.progressLabel}>🔧 Equipment Status</Text>
-            <Text style={styles.progressValue}>Drill-02 needs maintenance</Text>
+            <Text style={styles.progressValue}>{equipmentStatusText}</Text>
           </View>
           <View style={styles.progressItem}>
             <Text style={styles.progressLabel}>📊 Production</Text>
-            <Text style={styles.progressValue}>45 tons (target: 50)</Text>
+            <Text style={styles.progressValue}>
+              Attendance productivity: {stats.attendancePercentage}%
+            </Text>
           </View>
         </View>
 

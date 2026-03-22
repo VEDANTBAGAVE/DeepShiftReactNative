@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -16,6 +16,7 @@ import { RootStackParamList } from '../../navigation/types';
 import { useAuth } from '../../context/AuthContext';
 import { useOvermanDashboard } from '../../hooks/useDashboard';
 import { shiftService } from '../../services/shiftService';
+import { ShiftWithRelations } from '../../types/database';
 
 type CreateShiftLogScreenNavigationProp =
   StackNavigationProp<RootStackParamList>;
@@ -28,29 +29,99 @@ const CreateShiftLogScreen: React.FC = () => {
   const [remarks, setRemarks] = useState('');
   const [successModalVisible, setSuccessModalVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [todayShiftDetails, setTodayShiftDetails] = useState<
+    ShiftWithRelations[]
+  >([]);
 
   const today = new Date().toISOString().split('T')[0];
   const todayShifts = shifts.filter(s => s.shift_date === today);
   const shiftType = todayShifts[0]?.shift_type ?? 'morning';
 
+  useEffect(() => {
+    const loadTodayShiftDetails = async () => {
+      if (!user?.id) return;
+      try {
+        const all = await shiftService.getShiftsWithRelations();
+        setTodayShiftDetails(
+          all.filter(s => s.overman_id === user.id && s.shift_date === today),
+        );
+      } catch {
+        setTodayShiftDetails([]);
+      }
+    };
+
+    loadTodayShiftDetails();
+  }, [user?.id, today, shifts.length]);
+
+  const aggregated = useMemo(() => {
+    const logs = todayShiftDetails.flatMap(s => s.worker_logs ?? []);
+    const incidents = todayShiftDetails.flatMap(s => s.incidents ?? []);
+    const equipmentLogs = todayShiftDetails.flatMap(
+      s => s.equipment_logs ?? [],
+    );
+
+    const totalWorkers = logs.length;
+    const workersPresent = logs.filter(
+      l => l.attendance_status === 'present',
+    ).length;
+    const workersAbsent = logs.filter(
+      l => l.attendance_status === 'absent',
+    ).length;
+    const criticalIncidents = incidents.filter(
+      i => i.severity_level === 'high',
+    ).length;
+    const equipmentIssues = equipmentLogs.filter(
+      e => e.condition_status === 'faulty' && !e.resolved_at,
+    ).length;
+    const safetyPassed = logs.filter(l => l.safety_check_passed).length;
+
+    return {
+      totalWorkers,
+      workersPresent,
+      workersAbsent,
+      totalIncidents: incidents.length,
+      criticalIncidents,
+      equipmentIssues,
+      safetyScore:
+        totalWorkers > 0
+          ? Math.round((safetyPassed / totalWorkers) * 100)
+          : 100,
+      productionAchieved:
+        totalWorkers > 0
+          ? Math.round((workersPresent / totalWorkers) * 100)
+          : 0,
+    };
+  }, [todayShiftDetails]);
+
   const shiftSummary = {
-    date: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }),
-    shiftType: `${shiftType.charAt(0).toUpperCase() + shiftType.slice(1)} Shift`,
-    shiftTime: shiftType === 'morning' ? '06:00 AM - 02:00 PM'
-             : shiftType === 'evening' ? '02:00 PM - 10:00 PM'
-             : '10:00 PM - 06:00 AM',
+    date: new Date().toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }),
+    shiftType: `${
+      shiftType.charAt(0).toUpperCase() + shiftType.slice(1)
+    } Shift`,
+    shiftTime:
+      shiftType === 'morning'
+        ? '06:00 AM - 02:00 PM'
+        : shiftType === 'evening'
+        ? '02:00 PM - 10:00 PM'
+        : '10:00 PM - 06:00 AM',
     totalSections: todayShifts.length,
-    sectionsReviewed: todayShifts.filter(s => s.status === 'submitted' || s.status === 'approved').length,
-    totalWorkers: 0,
-    workersPresent: 0,
-    workersAbsent: 0,
-    totalIncidents: 0,
-    criticalIncidents: 0,
-    equipmentIssues: 0,
+    sectionsReviewed: todayShifts.filter(
+      s => s.status === 'submitted' || s.status === 'approved',
+    ).length,
+    totalWorkers: aggregated.totalWorkers,
+    workersPresent: aggregated.workersPresent,
+    workersAbsent: aggregated.workersAbsent,
+    totalIncidents: aggregated.totalIncidents,
+    criticalIncidents: aggregated.criticalIncidents,
+    equipmentIssues: aggregated.equipmentIssues,
     coalExtracted: 'N/A',
     targetCoal: 'N/A',
-    productionAchieved: 0,
-    safetyScore: 100,
+    productionAchieved: aggregated.productionAchieved,
+    safetyScore: aggregated.safetyScore,
   };
 
   const handleSubmitShiftLog = async () => {
@@ -58,13 +129,49 @@ const CreateShiftLogScreen: React.FC = () => {
       Alert.alert('Error', 'No section assigned to your account.');
       return;
     }
+
+    if (!user?.id) {
+      Alert.alert('Error', 'Invalid overman session. Please login again.');
+      return;
+    }
+
     try {
       setIsSubmitting(true);
+
+      if (todayShifts.length === 0) {
+        await shiftService.createShift({
+          shift_date: today,
+          shift_type: shiftType as 'morning' | 'evening' | 'night',
+          section_id: user.section_id,
+          overman_id: user.id,
+          handover_notes: remarks.trim() || undefined,
+        });
+
+        Alert.alert(
+          'Shift Created',
+          "Today's shift has been initialized. Foreman can now mark attendance and submit section reports.",
+        );
+        navigation.goBack();
+        return;
+      }
+
+      const submitted = todayShifts.filter(s => s.status === 'submitted');
+      if (submitted.length === 0) {
+        Alert.alert(
+          'Nothing to Finalize Yet',
+          'No submitted section reports found for today. Ask foreman to submit reports first.',
+        );
+        return;
+      }
+
       // Update all submitted shifts for today to approved
       await Promise.all(
-        todayShifts
-          .filter(s => s.status === 'submitted')
-          .map(s => shiftService.updateShiftStatus(s.id, 'approved', user.id)),
+        submitted.map(async s => {
+          if (remarks.trim()) {
+            await shiftService.updateHandoverNotes(s.id, remarks.trim());
+          }
+          return shiftService.updateShiftStatus(s.id, 'approved', user.id);
+        }),
       );
       setSuccessModalVisible(true);
       setTimeout(() => {

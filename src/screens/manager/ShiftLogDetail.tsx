@@ -41,6 +41,20 @@ const ShiftLogDetail: React.FC = () => {
       .finally(() => setIsLoading(false));
   }, [reportId]);
 
+  const workerLogs = shift?.worker_logs ?? [];
+  const presentWorkers = workerLogs.filter(
+    l => l.attendance_status === 'present',
+  ).length;
+  const attendanceRate =
+    workerLogs.length > 0
+      ? Math.round((presentWorkers / workerLogs.length) * 100)
+      : 0;
+  const safetyPassed = workerLogs.filter(l => l.safety_check_passed).length;
+  const safetyRate =
+    workerLogs.length > 0
+      ? Math.round((safetyPassed / workerLogs.length) * 100)
+      : 0;
+
   // Demo data for shift log
   const shiftLog = shift ? {
     id: shift.id.slice(0, 8).toUpperCase(),
@@ -70,7 +84,11 @@ const ShiftLogDetail: React.FC = () => {
       location: 'Section',
     })),
     safetyReadings: {
-      ch4: 'N/A', o2: 'N/A', co: 'N/A', ventilation: 'OK', temperature: 'N/A',
+      ch4: '—',
+      o2: '—',
+      co: '—',
+      ventilation: safetyRate > 0 ? `${safetyRate}% pass` : 'No safety logs',
+      temperature: '—',
     },
     incidents: (shift.incidents ?? []).map(i => ({
       type: i.incident_type,
@@ -78,7 +96,11 @@ const ShiftLogDetail: React.FC = () => {
       description: i.description,
       time: new Date(i.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     })),
-    productionMetrics: { targetTonnage: 450, achievedTonnage: 450, percentage: 100 },
+    productionMetrics: {
+      targetTonnage: workerLogs.length,
+      achievedTonnage: presentWorkers,
+      percentage: attendanceRate,
+    },
     overmanRemarks: shift.handover_notes ?? 'No remarks provided.',
   } : null;
 

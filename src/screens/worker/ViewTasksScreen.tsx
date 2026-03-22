@@ -45,7 +45,6 @@ const ViewTasksScreen: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
     if (!user?.id) return;
@@ -64,29 +63,6 @@ const ViewTasksScreen: React.FC = () => {
     fetchTasks();
   }, [fetchTasks]);
 
-  const handleToggleStatus = async (task: Task) => {
-    const nextStatus: TaskStatus =
-      task.status === 'pending'
-        ? 'in_progress'
-        : task.status === 'in_progress'
-        ? 'completed'
-        : task.status;
-
-    if (task.status === 'completed' || task.status === 'cancelled') return;
-
-    setUpdatingId(task.id);
-    try {
-      await taskService.updateTaskStatus(task.id, nextStatus);
-      setTasks(prev =>
-        prev.map(t => (t.id === task.id ? { ...t, status: nextStatus } : t)),
-      );
-    } catch {
-      // revert silently
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
   const activeTasks = tasks.filter(
     t => t.status !== 'completed' && t.status !== 'cancelled',
   );
@@ -96,19 +72,11 @@ const ViewTasksScreen: React.FC = () => {
 
   const renderTask = (task: Task) => {
     const isDone = task.status === 'completed' || task.status === 'cancelled';
-    const isUpdating = updatingId === task.id;
     return (
-      <TouchableOpacity
-        key={task.id}
-        style={styles.taskCard}
-        onPress={() => handleToggleStatus(task)}
-        disabled={isDone || isUpdating}
-        activeOpacity={0.75}
-      >
+      <View key={task.id} style={styles.taskCard}>
         <View style={styles.taskCheckbox}>
           <View style={[styles.checkbox, isDone && styles.checkboxChecked]}>
             {isDone && <Text style={styles.checkmark}>✓</Text>}
-            {isUpdating && <ActivityIndicator size="small" color="#3b82f6" />}
           </View>
         </View>
         <View style={styles.taskContent}>
@@ -151,7 +119,7 @@ const ViewTasksScreen: React.FC = () => {
             </Text>
           ) : null}
         </View>
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -161,16 +129,24 @@ const ViewTasksScreen: React.FC = () => {
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backButton}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
         >
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>My Tasks</Text>
+          <Text style={styles.headerTitle}>Task Records</Text>
           <Text style={styles.headerSubtitle}>
             {activeTasks.length} active · {doneTasks.length} done
           </Text>
         </View>
         <View style={styles.headerPlaceholder} />
+      </View>
+
+      <View style={styles.noticeBar}>
+        <Text style={styles.noticeText}>
+          ℹ️ Viewer Mode: task updates are recorded by foreman/supervisor.
+        </Text>
       </View>
 
       {isLoading ? (
@@ -197,7 +173,7 @@ const ViewTasksScreen: React.FC = () => {
               <Text style={styles.emptyIcon}>📋</Text>
               <Text style={styles.emptyTitle}>No Tasks Yet</Text>
               <Text style={styles.emptyText}>
-                Your foreman hasn't assigned any tasks yet
+                No assigned task records are available yet
               </Text>
             </View>
           ) : (
@@ -248,6 +224,18 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   headerPlaceholder: { width: 60 },
+  noticeBar: {
+    backgroundColor: '#e0f2fe',
+    borderBottomWidth: 1,
+    borderBottomColor: '#bae6fd',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  noticeText: {
+    color: '#0369a1',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   scrollView: { flex: 1, padding: 16 },
   loadingContainer: {
     flex: 1,

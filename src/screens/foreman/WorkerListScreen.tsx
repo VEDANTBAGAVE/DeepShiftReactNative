@@ -34,6 +34,7 @@ const STATUS_FILTERS: {
 const WorkerListScreen: React.FC = () => {
   const navigation = useNavigation<WorkerListNavigationProp>();
   const {
+    currentShift,
     workers,
     workerLogs,
     stats,
@@ -76,16 +77,21 @@ const WorkerListScreen: React.FC = () => {
     });
   }, [workersWithAttendance, searchQuery, statusFilter]);
 
-  const todayStats = useMemo(
-    () => ({
-      total: stats.totalWorkers,
-      present: stats.workersPresent,
-      absent: stats.workersAbsent,
-      notMarked:
-        stats.totalWorkers - stats.workersPresent - stats.workersAbsent,
-    }),
-    [stats],
-  );
+  const todayStats = useMemo(() => {
+    const total = workersWithAttendance.length;
+    const present = workersWithAttendance.filter(
+      w => w.todayAttendance === 'present',
+    ).length;
+    const absent = workersWithAttendance.filter(
+      w => w.todayAttendance === 'absent',
+    ).length;
+    return {
+      total,
+      present,
+      absent,
+      notMarked: Math.max(total - present - absent, 0),
+    };
+  }, [workersWithAttendance]);
 
   const toggleWorkerSelection = (workerId: string) => {
     const newSelection = new Set(selectedWorkers);
@@ -106,6 +112,10 @@ const WorkerListScreen: React.FC = () => {
   };
 
   const handleBulkAttendance = (status: AttendanceStatus) => {
+    if (!currentShift) {
+      Alert.alert('No Active Shift', 'Create/select today\'s shift before marking attendance.');
+      return;
+    }
     if (selectedWorkers.size === 0) {
       Alert.alert('No Selection', 'Please select workers first');
       return;
@@ -137,11 +147,19 @@ const WorkerListScreen: React.FC = () => {
   };
 
   const handleMarkPresent = async (workerId: string) => {
+    if (!currentShift) {
+      Alert.alert('No Active Shift', 'Create/select today\'s shift before marking attendance.');
+      return;
+    }
     await markAttendance(workerId, 'present');
     Alert.alert('Success', 'Worker marked as present');
   };
 
   const handleMarkAbsent = (workerId: string) => {
+    if (!currentShift) {
+      Alert.alert('No Active Shift', 'Create/select today\'s shift before marking attendance.');
+      return;
+    }
     Alert.alert('Mark Absent', 'Mark this worker as absent?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -230,7 +248,6 @@ const WorkerListScreen: React.FC = () => {
           </Text>
         </TouchableOpacity>
       </View>
-
       {/* Today's Counter */}
       <View style={styles.todayCounterContainer}>
         <View style={styles.todayCounterHeader}>
@@ -268,14 +285,20 @@ const WorkerListScreen: React.FC = () => {
             style={[
               styles.todayProgressFill,
               {
-                width: `${(todayStats.present / todayStats.total) * 100}%`,
+                width: `${
+                  todayStats.total > 0
+                    ? (todayStats.present / todayStats.total) * 100
+                    : 0
+                }%`,
               },
             ]}
           />
         </View>
         <Text style={styles.todayProgressText}>
-          {Math.round((todayStats.present / todayStats.total) * 100)}% Marked
-          Present
+          {todayStats.total > 0
+            ? Math.round((todayStats.present / todayStats.total) * 100)
+            : 0}
+          % Marked Present
         </Text>
       </View>
 
@@ -291,18 +314,16 @@ const WorkerListScreen: React.FC = () => {
       </View>
 
       {/* Filter Tabs */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterTabs}
-      >
+      <View style={styles.filterTabs}>
         {STATUS_FILTERS.map(filter => (
           <TouchableOpacity
             key={filter.value}
             style={[
               styles.filterTab,
               statusFilter === filter.value && styles.filterTabActive,
-              { borderBottomColor: filter.color },
+              statusFilter === filter.value
+                ? { backgroundColor: filter.color }
+                : null,
             ]}
             onPress={() => setStatusFilter(filter.value)}
           >
@@ -316,7 +337,7 @@ const WorkerListScreen: React.FC = () => {
             </Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
 
       {/* Section Filter removed - no section data in scope */}
 
@@ -555,27 +576,30 @@ const styles = StyleSheet.create({
   filterTabs: {
     flexDirection: 'row',
     backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 6,
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
-    paddingHorizontal: 12,
   },
   filterTab: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginHorizontal: 4,
-    borderBottomWidth: 3,
-    borderBottomColor: 'transparent',
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
   },
   filterTabActive: {
-    borderBottomWidth: 3,
+    backgroundColor: '#3b82f6',
   },
   filterTabText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: '#64748b',
   },
   filterTabTextActive: {
-    color: '#1e293b',
+    color: '#fff',
   },
   sectionFilter: {
     flexDirection: 'row',

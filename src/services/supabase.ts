@@ -5,6 +5,16 @@ import Config from 'react-native-config';
 // Load Supabase credentials from .env via react-native-config
 const SUPABASE_URL = Config.SUPABASE_URL;
 const SUPABASE_ANON_KEY = Config.SUPABASE_ANON_KEY;
+const SUPABASE_PROJECT_REF = (() => {
+  try {
+    const match = SUPABASE_URL.match(/^https?:\/\/([^./]+)/i);
+    return match?.[1] || 'deepshift';
+  } catch {
+    return 'deepshift';
+  }
+})();
+
+export const SUPABASE_AUTH_STORAGE_KEY = `sb-${SUPABASE_PROJECT_REF}-auth-token`;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   throw new Error(
@@ -20,6 +30,7 @@ export const supabase: SupabaseClient = createClient(
   {
     auth: {
       storage: AsyncStorage,
+      storageKey: SUPABASE_AUTH_STORAGE_KEY,
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: false,
